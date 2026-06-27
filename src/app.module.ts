@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
@@ -8,6 +9,9 @@ import { StorageModule } from './common/storage/storage.module';
 import { AttachmentsModule } from './common/attachments/attachments.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { FleetModule } from './fleet/fleet.module';
+import { DriversModule } from './drivers/drivers.module';
+import { HrModule } from './hr/hr.module';
 
 @Module({
   imports: [
@@ -15,6 +19,8 @@ import { DashboardModule } from './dashboard/dashboard.module';
       envFilePath: `.env.${process.env.NODE_ENV || 'development'}`,
       isGlobal: true,
     }),
+
+    ScheduleModule.forRoot(),
 
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
@@ -56,6 +62,9 @@ import { DashboardModule } from './dashboard/dashboard.module';
     AttachmentsModule,
     NotificationsModule,
     DashboardModule,
+    FleetModule,
+    DriversModule,
+    HrModule,
   ],
   controllers: [],
   providers: [],
