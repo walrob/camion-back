@@ -12,6 +12,9 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { FleetModule } from './fleet/fleet.module';
 import { DriversModule } from './drivers/drivers.module';
 import { HrModule } from './hr/hr.module';
+import { TripsModule } from './trips/trips.module';
+import { TripLogModule } from './trip-log/trip-log.module';
+import { SettlementsModule } from './settlements/settlements.module';
 
 @Module({
   imports: [
@@ -65,6 +68,9 @@ import { HrModule } from './hr/hr.module';
     FleetModule,
     DriversModule,
     HrModule,
+    TripsModule,
+    TripLogModule,
+    SettlementsModule,
   ],
   controllers: [],
   providers: [],
