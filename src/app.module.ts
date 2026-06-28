@@ -18,6 +18,7 @@ import { TripLogModule } from './trip-log/trip-log.module';
 import { SettlementsModule } from './settlements/settlements.module';
 import { IncidentsModule } from './incidents/incidents.module';
 import { AlertsModule } from './alerts/alerts.module';
+import { MaintenanceModule } from './maintenance/maintenance.module';
 
 @Module({
   imports: [
@@ -77,6 +78,7 @@ import { AlertsModule } from './alerts/alerts.module';
     TripLogModule,
     SettlementsModule,
     IncidentsModule,
+    MaintenanceModule,
   ],
   controllers: [],
   providers: [],
