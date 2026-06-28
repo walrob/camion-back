@@ -75,20 +75,24 @@ Frontend:         Nuxt 3 + Vuetify 3 + Pinia (carpeta ../front-camion, con Capac
 El proyecto se construye en fases independientes y autocontenidas para poder
 ejecutarlas en sesiones separadas:
 
-| Fase | Entrega |
-|------|---------|
-| 0 | Fundaciones (limpieza del dominio anterior, roles, attachments) |
-| 1 | Flota & Choferes |
-| 1B | RRHH (legajos, permisos/vencimientos, asignación chofer↔camión) |
-| 2 | Viajes + Bitácora + Liquidaciones |
-| 3 | Checklist pre-viaje |
-| 4 | Centro de Incidentes |
-| 5 | Alertas Inteligentes |
-| 6 | Mantenimiento Preventivo |
-| 7 | Centro Documental |
-| 8 | Dashboard Gerencial |
-| 9 | Indicadores |
-| 10 | App Chofer / PWA / Push / Offline |
+> ✅ **Estado: las 10 fases están implementadas y compilando** (backend NestJS +
+> frontend Nuxt). Pendiente para producción: cargar credenciales **FCM** para el push
+> real (hoy scaffold) y reemplazar `synchronize:true` por migraciones.
+
+| Fase | Entrega | Estado |
+|------|---------|--------|
+| 0 | Fundaciones (limpieza, roles, attachments, base front) | ✅ |
+| 1 | Flota & Choferes | ✅ |
+| 1B | RRHH (legajos, permisos/vencimientos, asignación chofer↔camión) | ✅ |
+| 2 | Viajes + Bitácora + Liquidaciones | ✅ |
+| 3 | Checklist pre-viaje (firma digital) | ✅ |
+| 4 | Centro de Incidentes (WebSocket en vivo) | ✅ |
+| 5 | Alertas Inteligentes (motor + cron + WS) | ✅ |
+| 6 | Mantenimiento Preventivo | ✅ |
+| 7 | Centro Documental | ✅ |
+| 8 | Dashboard Gerencial | ✅ |
+| 9 | Indicadores (+ export Excel) | ✅ |
+| 10 | PWA + Mensajería + Offline-first + Push (scaffold) | ✅ |
 
 👉 Detalle y prompts copiables: [`docs/01-PROMPTS-POR-FASE.md`](./docs/01-PROMPTS-POR-FASE.md)
 
