@@ -19,6 +19,7 @@ import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface
 import { paginateAndSearch } from 'src/common/utils/paginate-and-search.util';
 import { TrucksService } from 'src/fleet/trucks.service';
 import { DriversService } from 'src/drivers/drivers.service';
+import { ChecklistsService } from 'src/checklists/checklists.service';
 
 @Injectable()
 export class TripsService {
@@ -27,6 +28,7 @@ export class TripsService {
     private readonly tripsRepository: Repository<Trip>,
     private readonly trucksService: TrucksService,
     private readonly driversService: DriversService,
+    private readonly checklistsService: ChecklistsService,
   ) {}
 
   async create(dto: CreateTripDto, user: ActiveUserInterface): Promise<Trip> {
@@ -112,6 +114,13 @@ export class TripsService {
     const trip = await this.assertOwnedByDriver(id, user);
     if (trip.status !== TripStatus.ASSIGNED) {
       throw new BadRequestException('El viaje ya fue iniciado o finalizado.');
+    }
+
+    const approved = await this.checklistsService.isApprovedForTrip(id);
+    if (!approved) {
+      throw new BadRequestException(
+        'Debe completar y firmar el checklist pre-viaje antes de iniciar.',
+      );
     }
 
     trip.status = TripStatus.IN_PROGRESS;

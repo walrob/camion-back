@@ -12,6 +12,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { FleetModule } from './fleet/fleet.module';
 import { DriversModule } from './drivers/drivers.module';
 import { HrModule } from './hr/hr.module';
+import { ChecklistsModule } from './checklists/checklists.module';
 import { TripsModule } from './trips/trips.module';
 import { TripLogModule } from './trip-log/trip-log.module';
 import { SettlementsModule } from './settlements/settlements.module';
@@ -68,6 +69,7 @@ import { SettlementsModule } from './settlements/settlements.module';
     FleetModule,
     DriversModule,
     HrModule,
+    ChecklistsModule,
     TripsModule,
     TripLogModule,
     SettlementsModule,
