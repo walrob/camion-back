@@ -20,6 +20,7 @@ import { IncidentsModule } from './incidents/incidents.module';
 import { AlertsModule } from './alerts/alerts.module';
 import { MaintenanceModule } from './maintenance/maintenance.module';
 import { DocumentsModule } from './documents/documents.module';
+import { IndicatorsModule } from './indicators/indicators.module';
 
 @Module({
   imports: [
@@ -81,6 +82,7 @@ import { DocumentsModule } from './documents/documents.module';
     IncidentsModule,
     MaintenanceModule,
     DocumentsModule,
+    IndicatorsModule,
   ],
   controllers: [],
   providers: [],
