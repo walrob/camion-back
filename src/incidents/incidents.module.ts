@@ -7,12 +7,14 @@ import { IncidentsController } from './incidents.controller';
 import { IncidentsGateway } from './incidents.gateway';
 import { AuthModule } from 'src/auth/auth.module';
 import { DriversModule } from 'src/drivers/drivers.module';
+import { AlertsModule } from 'src/alerts/alerts.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Incident, IncidentEvent]),
     forwardRef(() => AuthModule),
     DriversModule,
+    AlertsModule,
   ],
   controllers: [IncidentsController],
   providers: [IncidentsService, IncidentsGateway],

@@ -16,6 +16,7 @@ import {
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
 import { DriversService } from 'src/drivers/drivers.service';
 import { IncidentsGateway } from './incidents.gateway';
+import { AlertsService } from 'src/alerts/alerts.service';
 
 @Injectable()
 export class IncidentsService {
@@ -26,6 +27,7 @@ export class IncidentsService {
     private readonly eventsRepository: Repository<IncidentEvent>,
     private readonly driversService: DriversService,
     private readonly gateway: IncidentsGateway,
+    private readonly alertsService: AlertsService,
   ) {}
 
   async create(
@@ -53,7 +55,12 @@ export class IncidentsService {
     const full = await this.findOne(saved.id);
 
     this.gateway.emitNew(full);
-    // TODO (Fase 5): disparar alerta según severidad (crítica/alta => roja/naranja).
+    await this.alertsService.createFromIncident({
+      id: full.id,
+      code: full.code,
+      severity: full.severity,
+      type: full.type,
+    });
 
     return full;
   }
