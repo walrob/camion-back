@@ -22,6 +22,8 @@ const DEFAULT_THRESHOLDS: Record<string, string> = {
   idleHoursThreshold: '6',
   expenseAmountThreshold: '100000',
   expiryWarningDays: '30',
+  maintenanceKmThreshold: '1000',
+  maintenanceDaysThreshold: '15',
 };
 
 const OPS_ROLES = ['admin', 'manager', 'dispatcher'];
@@ -64,6 +66,26 @@ export class AlertsService {
       this.notifyUrgent(alert);
     }
     return alert;
+  }
+
+  /** Crea la alerta solo si no hay una sin resolver para el mismo origen. */
+  async createDedup(params: {
+    level: AlertLevel;
+    sourceType: AlertSourceType;
+    sourceId: string;
+    title: string;
+    message: string;
+    targetRoles?: string[];
+  }): Promise<Alert | null> {
+    const existing = await this.alertsRepository.findOne({
+      where: {
+        sourceType: params.sourceType,
+        sourceId: params.sourceId,
+        status: Not(AlertStatus.RESOLVED),
+      },
+    });
+    if (existing) return null;
+    return this.createAlert(params);
   }
 
   private notifyUrgent(alert: Alert) {
