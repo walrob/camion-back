@@ -19,6 +19,7 @@ import { SettlementsModule } from './settlements/settlements.module';
 import { IncidentsModule } from './incidents/incidents.module';
 import { AlertsModule } from './alerts/alerts.module';
 import { MaintenanceModule } from './maintenance/maintenance.module';
+import { DocumentsModule } from './documents/documents.module';
 
 @Module({
   imports: [
@@ -79,6 +80,7 @@ import { MaintenanceModule } from './maintenance/maintenance.module';
     SettlementsModule,
     IncidentsModule,
     MaintenanceModule,
+    DocumentsModule,
   ],
   controllers: [],
   providers: [],
