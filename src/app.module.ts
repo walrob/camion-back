@@ -21,6 +21,8 @@ import { AlertsModule } from './alerts/alerts.module';
 import { MaintenanceModule } from './maintenance/maintenance.module';
 import { DocumentsModule } from './documents/documents.module';
 import { IndicatorsModule } from './indicators/indicators.module';
+import { MessagesModule } from './messages/messages.module';
+import { PushModule } from './notifications/push/push.module';
 
 @Module({
   imports: [
@@ -83,6 +85,8 @@ import { IndicatorsModule } from './indicators/indicators.module';
     MaintenanceModule,
     DocumentsModule,
     IndicatorsModule,
+    MessagesModule,
+    PushModule,
   ],
   controllers: [],
   providers: [],
