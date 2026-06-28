@@ -16,6 +16,7 @@ import { ChecklistsModule } from './checklists/checklists.module';
 import { TripsModule } from './trips/trips.module';
 import { TripLogModule } from './trip-log/trip-log.module';
 import { SettlementsModule } from './settlements/settlements.module';
+import { IncidentsModule } from './incidents/incidents.module';
 
 @Module({
   imports: [
@@ -73,6 +74,7 @@ import { SettlementsModule } from './settlements/settlements.module';
     TripsModule,
     TripLogModule,
     SettlementsModule,
+    IncidentsModule,
   ],
   controllers: [],
   providers: [],
