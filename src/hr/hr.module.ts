@@ -10,11 +10,13 @@ import { EmployeesController } from './employees.controller';
 import { CertificationsController } from './certifications.controller';
 import { AssignmentsController } from './assignments.controller';
 import { AuthModule } from 'src/auth/auth.module';
+import { AlertsModule } from 'src/alerts/alerts.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Employee, Certification, TruckAssignment]),
     forwardRef(() => AuthModule),
+    AlertsModule,
   ],
   controllers: [
     EmployeesController,

@@ -7,6 +7,7 @@ import { CreateCertificationDto } from './dto/create-certification.dto';
 import { UpdateCertificationDto } from './dto/update-certification.dto';
 import { CertificationStatus } from 'src/common/enums/certificationStatus.enum';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
+import { AlertsService } from 'src/alerts/alerts.service';
 
 const WARNING_DAYS = 30;
 
@@ -17,6 +18,7 @@ export class CertificationsService {
   constructor(
     @InjectRepository(Certification)
     private readonly certificationsRepository: Repository<Certification>,
+    private readonly alertsService: AlertsService,
   ) {}
 
   /** Calcula el estado de un permiso a partir de su vencimiento. */
@@ -104,8 +106,17 @@ export class CertificationsService {
         cert.status = status;
         await this.certificationsRepository.save(cert);
         changed++;
+
+        // Emitir alerta cuando pasa a por-vencer o vencido.
+        if (status !== CertificationStatus.VALID) {
+          await this.alertsService.createFromCertification({
+            id: cert.id,
+            type: cert.type,
+            expiryDate: cert.expiryDate,
+            expired: status === CertificationStatus.EXPIRED,
+          });
+        }
       }
-      // TODO (Fase 5): emitir alerta si status === EXPIRING || EXPIRED
     }
     if (changed) {
       this.logger.log(`Estados de certificaciones recalculados: ${changed}`);

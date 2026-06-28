@@ -14,6 +14,7 @@ import { TripStatus } from 'src/common/enums/tripStatus.enum';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
 import { TripsService } from 'src/trips/trips.service';
 import { DriversService } from 'src/drivers/drivers.service';
+import { AlertsService } from 'src/alerts/alerts.service';
 
 @Injectable()
 export class TripLogService {
@@ -22,6 +23,7 @@ export class TripLogService {
     private readonly entriesRepository: Repository<TripLogEntry>,
     private readonly tripsService: TripsService,
     private readonly driversService: DriversService,
+    private readonly alertsService: AlertsService,
   ) {}
 
   async create(
@@ -53,7 +55,16 @@ export class TripLogService {
       occurredAt: dto.occurredAt ? new Date(dto.occurredAt) : new Date(),
       createdBy: user.id,
     });
-    return this.entriesRepository.save(entry);
+    const saved = await this.entriesRepository.save(entry);
+
+    // Alerta amarilla si el gasto supera el umbral configurado.
+    await this.alertsService.createFromExpense({
+      id: saved.id,
+      amount: Number(saved.amount),
+      type: saved.type,
+    });
+
+    return saved;
   }
 
   listByTrip(tripId: string): Promise<TripLogEntry[]> {

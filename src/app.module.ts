@@ -17,6 +17,7 @@ import { TripsModule } from './trips/trips.module';
 import { TripLogModule } from './trip-log/trip-log.module';
 import { SettlementsModule } from './settlements/settlements.module';
 import { IncidentsModule } from './incidents/incidents.module';
+import { AlertsModule } from './alerts/alerts.module';
 
 @Module({
   imports: [
@@ -69,6 +70,7 @@ import { IncidentsModule } from './incidents/incidents.module';
     DashboardModule,
     FleetModule,
     DriversModule,
+    AlertsModule,
     HrModule,
     ChecklistsModule,
     TripsModule,
