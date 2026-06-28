@@ -6,6 +6,7 @@ import { TripsController } from './trips.controller';
 import { AuthModule } from 'src/auth/auth.module';
 import { FleetModule } from 'src/fleet/fleet.module';
 import { DriversModule } from 'src/drivers/drivers.module';
+import { ChecklistsModule } from 'src/checklists/checklists.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { DriversModule } from 'src/drivers/drivers.module';
     forwardRef(() => AuthModule),
     FleetModule,
     DriversModule,
+    ChecklistsModule,
   ],
   controllers: [TripsController],
   providers: [TripsService],
