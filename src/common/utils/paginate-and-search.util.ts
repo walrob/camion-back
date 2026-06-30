@@ -31,9 +31,15 @@ export async function paginateAndSearch<T extends ObjectLiteral>(
     qb.select(selectColumns);
   }
 
-  // 🔗 Relaciones
+  // 🔗 Relaciones (soporta anidadas: 'driver.user' cuelga del alias 'driver')
   relations.forEach((relation) => {
-    qb.leftJoinAndSelect(`entity.${relation}`, relation);
+    const alias = relation.replace(/\./g, '_');
+    const lastDot = relation.lastIndexOf('.');
+    const leftSide =
+      lastDot === -1
+        ? `entity.${relation}`
+        : `${relation.slice(0, lastDot).replace(/\./g, '_')}.${relation.slice(lastDot + 1)}`;
+    qb.leftJoinAndSelect(leftSide, alias);
   });
 
   // 🎯 Filtros

@@ -14,10 +14,10 @@ export class EmailService {
 
     await this.mailerService.sendMail({
       to: email,
-      subject: 'Tu cuenta en ERP Textil fue creada',
+      subject: 'Tu cuenta en FleetLog fue creada',
       html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; border: 1px solid #e0e0e0; border-radius: 10px; padding: 24px; background-color: #ffffff;">
-        <h2 style="color: #0b57d0; margin-top: 0;">Bienvenido al ERP Textil</h2>
+        <h2 style="color: #0b57d0; margin-top: 0;">Bienvenido al FleetLog</h2>
         <p style="font-size: 16px; color: #333;">
           Se creó una cuenta para vos en el sistema de gestión ERP.
         </p>
@@ -30,14 +30,19 @@ export class EmailService {
           La contraseña te será proporcionada por el administrador del sistema.
         </p>
         <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-        <p style="font-size: 13px; color: #777; margin: 0;">Saludos,<br/><strong>Equipo ERP Textil</strong></p>
+        <p style="font-size: 13px; color: #777; margin: 0;">Saludos,<br/><strong>Equipo FleetLog</strong></p>
       </div>`,
     });
   }
 
   async sendQuoteEmail(
     email: string,
-    data: { number: string; clientName: string; totalAmount: number; validUntil: string | null },
+    data: {
+      number: string;
+      clientName: string;
+      totalAmount: number;
+      validUntil: string | null;
+    },
   ) {
     const validez = data.validUntil
       ? new Date(data.validUntil).toLocaleDateString('es-AR')
@@ -70,7 +75,7 @@ export class EmailService {
           Para aprobarlo o realizar consultas, comuníquese con nosotros respondiendo este correo.
         </p>
         <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-        <p style="font-size: 13px; color: #777; margin: 0;">Saludos,<br/><strong>Equipo ERP Textil</strong></p>
+        <p style="font-size: 13px; color: #777; margin: 0;">Saludos,<br/><strong>Equipo FleetLog</strong></p>
       </div>`,
     });
   }
@@ -80,12 +85,12 @@ export class EmailService {
 
     await this.mailerService.sendMail({
       to: email,
-      subject: 'Restablecé tu contraseña | ERP Textil',
+      subject: 'Restablecé tu contraseña | FleetLog',
       html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; border: 1px solid #e0e0e0; border-radius: 10px; padding: 24px; background-color: #ffffff;">
         <h2 style="color: #0b57d0; margin-top: 0;">Restablecer contraseña</h2>
         <p style="font-size: 16px; color: #333;">
-          Recibimos una solicitud para restablecer la contraseña de tu cuenta en el ERP Textil.
+          Recibimos una solicitud para restablecer la contraseña de tu cuenta en el FleetLog.
         </p>
         <p style="margin: 24px 0;">
           <a href="${resetLink}" style="background-color: #0b57d0; color: #ffffff; padding: 12px 20px; border-radius: 6px; text-decoration: none; font-weight: bold;">
@@ -94,7 +99,7 @@ export class EmailService {
         </p>
         <p style="font-size: 14px; color: #555;">Si no solicitaste este cambio, podés ignorar este correo.</p>
         <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-        <p style="font-size: 13px; color: #777; margin: 0;">Saludos,<br/><strong>Equipo ERP Textil</strong></p>
+        <p style="font-size: 13px; color: #777; margin: 0;">Saludos,<br/><strong>Equipo FleetLog</strong></p>
       </div>`,
     });
   }
