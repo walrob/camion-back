@@ -9,8 +9,13 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { DriverStatus } from 'src/common/enums/driverStatus.enum';
-import { User } from 'src/users/entities/user.entity';
+import { Employee } from 'src/hr/entities/employee.entity';
 
+/**
+ * Driver es una capacidad operativa de un Employee (RRHH). El dato personal y el
+ * acceso a la app (User) viven en Employee; aquí solo se guarda lo de conducción.
+ * Relación 1:1 con Employee: un legajo no puede tener dos perfiles de chofer.
+ */
 @Entity('drivers')
 export class Driver {
   @PrimaryGeneratedColumn('uuid')
@@ -34,18 +39,12 @@ export class Driver {
   @Column({ nullable: true })
   deletedBy: string;
 
-  @Column()
-  userId: string;
-
-  @OneToOne(() => User, { nullable: true })
-  @JoinColumn({ name: 'userId' })
-  user: User;
-
-  // Reconciliación con RRHH: el legajo (Employee) es el registro canónico de la
-  // persona; los carnets/permisos viven en Certification. Nullable para permitir
-  // choferes creados antes de existir su legajo.
-  @Column({ nullable: true })
+  @Column({ unique: true })
   employeeId: string;
+
+  @OneToOne(() => Employee)
+  @JoinColumn({ name: 'employeeId' })
+  employee: Employee;
 
   @Column({ nullable: true })
   licenseNumber: string;
@@ -55,9 +54,6 @@ export class Driver {
 
   @Column({ type: 'date', nullable: true })
   licenseExpiry: string;
-
-  @Column({ nullable: true })
-  phone: string;
 
   @Column({ type: 'enum', enum: DriverStatus, default: DriverStatus.ACTIVE })
   status: DriverStatus;

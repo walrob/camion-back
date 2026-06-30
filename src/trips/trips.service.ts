@@ -56,7 +56,7 @@ export class TripsService {
       searchFields: ['code', 'origin', 'destination'],
       orderBy: 'createdAt',
       order: 'DESC',
-      relations: ['truck', 'driver', 'driver.user', 'trailer'],
+      relations: ['truck', 'driver', 'driver.employee', 'trailer'],
       baseWhere: {
         ...(filters.status && { status: filters.status }),
         ...(filters.truckId && { truckId: filters.truckId }),
@@ -68,7 +68,7 @@ export class TripsService {
   async findOne(id: string): Promise<Trip> {
     const trip = await this.tripsRepository.findOne({
       where: { id },
-      relations: ['truck', 'driver', 'driver.user', 'trailer'],
+      relations: ['truck', 'driver', 'driver.employee', 'trailer'],
     });
     if (!trip) throw new NotFoundException('Viaje no encontrado.');
     return trip;

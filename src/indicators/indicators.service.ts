@@ -31,7 +31,7 @@ export class IndicatorsService {
       .leftJoin('e.trip', 't')
       .leftJoin('t.truck', 'truck')
       .leftJoin('t.driver', 'd')
-      .leftJoin('d.user', 'u');
+      .leftJoin('d.employee', 'emp');
     if (f.truckId) qb.andWhere('t.truckId = :truckId', { truckId: f.truckId });
     if (f.driverId) qb.andWhere('t.driverId = :driverId', { driverId: f.driverId });
     if (f.fleetId) qb.andWhere('truck.fleetId = :fleetId', { fleetId: f.fleetId });
@@ -139,7 +139,7 @@ export class IndicatorsService {
         this.sumDistance(f),
         this.sumLiters(f),
         this.expenseByGroup(f, 'truck.plate', 'truck'),
-        this.expenseByGroup(f, 'u.name', 'driver'),
+        this.expenseByGroup(f, "CONCAT(emp.firstName, ' ', emp.lastName)", 'driver'),
         this.sumExpenses(f, [TripLogType.REPAIR, TripLogType.FINE]),
         this.breakdownsByTruck(f),
         this.incidentResolutionAvgHours(f),

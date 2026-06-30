@@ -1,28 +1,21 @@
 import {
   IsDateString,
-  IsEmail,
   IsEnum,
   IsNotEmpty,
   IsOptional,
   IsString,
-  MinLength,
+  IsUUID,
 } from 'class-validator';
 import { DriverStatus } from 'src/common/enums/driverStatus.enum';
 
 export class CreateDriverDto {
-  // Datos para crear el usuario asociado (rol DRIVER)
-  @IsString()
+  // El alta vincula un Employee (legajo) existente con su perfil de conducción.
+  // El dato personal y el login ya viven en ese Employee.
+  @IsUUID()
   @IsNotEmpty()
-  name: string;
+  employeeId: string;
 
-  @IsEmail()
-  email: string;
-
-  @IsString()
-  @MinLength(6)
-  password: string;
-
-  // Datos del perfil de chofer
+  // Datos operativos (de conducción)
   @IsString()
   @IsOptional()
   licenseNumber?: string;
@@ -34,10 +27,6 @@ export class CreateDriverDto {
   @IsDateString()
   @IsOptional()
   licenseExpiry?: string;
-
-  @IsString()
-  @IsOptional()
-  phone?: string;
 
   @IsEnum(DriverStatus)
   @IsOptional()

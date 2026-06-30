@@ -47,12 +47,14 @@ export class EmployeesController {
   @ApiQuery({ name: 'search', required: false })
   @ApiQuery({ name: 'position', required: false, enum: EmployeePosition })
   @ApiQuery({ name: 'employmentStatus', required: false, enum: EmploymentStatus })
+  @ApiQuery({ name: 'withoutDriver', required: false, type: Boolean })
   findPagination(
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page = 1,
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit = 10,
     @Query('search') search?: string,
     @Query('position') position?: EmployeePosition,
     @Query('employmentStatus') employmentStatus?: EmploymentStatus,
+    @Query('withoutDriver') withoutDriver?: string,
   ) {
     limit = limit > 100 ? 100 : limit;
     return this.employeesService.paginate(
@@ -60,6 +62,7 @@ export class EmployeesController {
       search,
       position,
       employmentStatus,
+      withoutDriver === 'true',
     );
   }
 
