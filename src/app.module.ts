@@ -23,6 +23,8 @@ import { DocumentsModule } from './documents/documents.module';
 import { IndicatorsModule } from './indicators/indicators.module';
 import { MessagesModule } from './messages/messages.module';
 import { PushModule } from './notifications/push/push.module';
+import { FuelModule } from './fuel/fuel.module';
+import { OeaModule } from './oea/oea.module';
 
 @Module({
   imports: [
@@ -87,6 +89,8 @@ import { PushModule } from './notifications/push/push.module';
     IndicatorsModule,
     MessagesModule,
     PushModule,
+    FuelModule,
+    OeaModule,
   ],
   controllers: [],
   providers: [],

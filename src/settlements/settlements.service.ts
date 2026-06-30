@@ -89,7 +89,7 @@ export class SettlementsService {
   async findOne(id: string): Promise<Settlement> {
     const settlement = await this.settlementsRepository.findOne({
       where: { id },
-      relations: ['trip', 'trip.driver', 'trip.driver.user'],
+      relations: ['trip', 'trip.driver', 'trip.driver.employee'],
     });
     if (!settlement) throw new NotFoundException('Liquidación no encontrada.');
     return settlement;
@@ -106,7 +106,7 @@ export class SettlementsService {
       .createQueryBuilder('s')
       .leftJoinAndSelect('s.trip', 't')
       .leftJoinAndSelect('t.driver', 'd')
-      .leftJoinAndSelect('d.user', 'u')
+      .leftJoinAndSelect('d.employee', 'emp')
       .orderBy('s.createdAt', 'DESC');
 
     if (filters.status) qb.andWhere('s.status = :status', { status: filters.status });
@@ -146,7 +146,8 @@ export class SettlementsService {
       doc.on('end', () => resolve(Buffer.concat(chunks))),
     );
 
-    const driverName = trip.driver?.user?.name ?? '-';
+    const emp = trip.driver?.employee;
+    const driverName = emp ? `${emp.firstName} ${emp.lastName}` : '-';
 
     doc.fontSize(18).text('Liquidación de viaje', { align: 'center' });
     doc.moveDown();

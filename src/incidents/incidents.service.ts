@@ -84,7 +84,7 @@ export class IncidentsService {
       .createQueryBuilder('i')
       .leftJoinAndSelect('i.truck', 'truck')
       .leftJoinAndSelect('i.driver', 'driver')
-      .leftJoinAndSelect('driver.user', 'user')
+      .leftJoinAndSelect('driver.employee', 'employee')
       .orderBy('i.createdAt', 'DESC');
 
     if (filters.status) qb.andWhere('i.status = :status', { status: filters.status });
@@ -124,7 +124,7 @@ export class IncidentsService {
   async findOne(id: string): Promise<Incident> {
     const incident = await this.incidentsRepository.findOne({
       where: { id },
-      relations: ['truck', 'driver', 'driver.user', 'events'],
+      relations: ['truck', 'driver', 'driver.employee', 'events'],
       order: { events: { at: 'ASC' } },
     });
     if (!incident) throw new NotFoundException('Incidente no encontrado.');

@@ -5,15 +5,13 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import * as bcryptjs from 'bcryptjs';
 import { IPaginationOptions, Pagination } from 'nestjs-typeorm-paginate';
 import { Driver } from './entities/driver.entity';
+import { Employee } from 'src/hr/entities/employee.entity';
 import { CreateDriverDto } from './dto/create-driver.dto';
 import { UpdateDriverDto } from './dto/update-driver.dto';
 import { DriverStatus } from 'src/common/enums/driverStatus.enum';
-import { Role } from 'src/common/enums/role.enum';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
-import { UsersService } from 'src/users/users.service';
 import { paginateAndSearch } from 'src/common/utils/paginate-and-search.util';
 
 @Injectable()
@@ -21,36 +19,45 @@ export class DriversService {
   constructor(
     @InjectRepository(Driver)
     private readonly driversRepository: Repository<Driver>,
-    private readonly usersService: UsersService,
+    @InjectRepository(Employee)
+    private readonly employeesRepository: Repository<Employee>,
   ) {}
 
+  /**
+   * Crea el perfil de conducción a partir de un Employee existente. No crea
+   * User ni datos personales: el legajo es la fuente de verdad. Relación 1:1.
+   */
   async create(dto: CreateDriverDto, user: ActiveUserInterface): Promise<Driver> {
-    const existing = await this.usersService.findOneByEmail(dto.email);
-    if (existing) {
-      throw new ConflictException('Ya existe un usuario con este email.');
+    const employee = await this.employeesRepository.findOne({
+      where: { id: dto.employeeId },
+    });
+    if (!employee) {
+      throw new NotFoundException(
+        `No existe un empleado con id ${dto.employeeId}.`,
+      );
     }
 
-    const newUser = await this.usersService.create({
-      email: dto.email,
-      name: dto.name,
-      password: await bcryptjs.hash(dto.password, 10),
-      isEmailVerified: true,
-      role: Role.DRIVER,
-      phone: dto.phone,
+    const existing = await this.driversRepository.findOne({
+      where: { employeeId: dto.employeeId },
     });
+    if (existing) {
+      throw new ConflictException(
+        'Este empleado ya tiene un perfil de chofer asociado.',
+      );
+    }
 
     const driver = this.driversRepository.create({
-      userId: newUser.id,
+      employeeId: dto.employeeId,
       licenseNumber: dto.licenseNumber,
       licenseType: dto.licenseType,
       licenseExpiry: dto.licenseExpiry,
-      phone: dto.phone,
       status: dto.status ?? DriverStatus.ACTIVE,
       notes: dto.notes,
       createdBy: user.id,
     });
 
-    return this.driversRepository.save(driver);
+    const saved = await this.driversRepository.save(driver);
+    return this.findOne(saved.id);
   }
 
   paginate(
@@ -62,10 +69,16 @@ export class DriversService {
       page: Number(options.page),
       limit: Number(options.limit),
       search,
-      searchFields: ['licenseNumber', 'phone', 'user.name', 'user.email'],
-      orderBy: 'user.name',
+      // La búsqueda por nombre/documento se resuelve vía la relación Employee.
+      searchFields: [
+        'employee.firstName',
+        'employee.lastName',
+        'employee.documentId',
+        'licenseNumber',
+      ],
+      orderBy: 'employee.lastName',
       order: 'ASC',
-      relations: ['user'],
+      relations: ['employee', 'employee.user'],
       baseWhere: {
         ...(status && { status }),
       },
@@ -75,21 +88,25 @@ export class DriversService {
   async findOne(id: string): Promise<Driver> {
     const driver = await this.driversRepository.findOne({
       where: { id },
-      relations: ['user'],
+      relations: ['employee', 'employee.user'],
     });
     if (!driver) throw new NotFoundException('Chofer no encontrado.');
     return driver;
   }
 
+  /** Resuelve el Driver del usuario logueado a través de Employee.userId. */
   async findByUserId(userId: string): Promise<Driver> {
-    const driver = await this.driversRepository.findOne({
-      where: { userId },
-      relations: ['user'],
-    });
+    const driver = await this.driversRepository
+      .createQueryBuilder('driver')
+      .leftJoinAndSelect('driver.employee', 'employee')
+      .leftJoinAndSelect('employee.user', 'user')
+      .where('employee.userId = :userId', { userId })
+      .getOne();
     if (!driver) throw new NotFoundException('Perfil de chofer no encontrado.');
     return driver;
   }
 
+  /** Solo campos operativos; los datos personales se editan en Employee. */
   async update(
     id: string,
     dto: UpdateDriverDto,
@@ -97,7 +114,8 @@ export class DriversService {
   ): Promise<Driver> {
     const driver = await this.findOne(id);
     Object.assign(driver, dto, { updatedBy: user.id });
-    return this.driversRepository.save(driver);
+    await this.driversRepository.save(driver);
+    return this.findOne(id);
   }
 
   async remove(id: string, user: ActiveUserInterface) {
