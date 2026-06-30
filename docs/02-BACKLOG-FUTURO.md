@@ -69,6 +69,10 @@ resultado conforme/no conforme, GPS e idempotencia offline. Pendientes:
       lleva a `/admin/rrhh` (PATCH /hr/employees/:id). Revisar también selects de
       chofer en viajes/indicadores/combustible/OEA que leían `d.user?.name` →
       ahora `employee.firstName + lastName`.
+- [ ] **Front de RRHH con alta de cuenta**: `EmployeeFormDialog`/`/admin/rrhh`
+      con un toggle "crear acceso a la app" que muestre email + contraseña; el rol
+      se deriva del puesto (mostrar el rol resultante), con opción de override.
+      Agregar el puesto **Gerente** (manager) al selector de puestos.
 - [ ] (agregar aquí nuevas ideas a medida que aparezcan)
 
 ---

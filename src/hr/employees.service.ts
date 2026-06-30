@@ -1,18 +1,24 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import * as bcryptjs from 'bcryptjs';
 import { IPaginationOptions, Pagination } from 'nestjs-typeorm-paginate';
 import { Employee } from './entities/employee.entity';
 import { Driver } from 'src/drivers/entities/driver.entity';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
-import { EmployeePosition } from 'src/common/enums/employeePosition.enum';
+import {
+  EmployeePosition,
+  POSITION_ROLE,
+} from 'src/common/enums/employeePosition.enum';
 import { EmploymentStatus } from 'src/common/enums/employmentStatus.enum';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
+import { UsersService } from 'src/users/users.service';
 import { paginateAndSearch } from 'src/common/utils/paginate-and-search.util';
 
 @Injectable()
@@ -20,6 +26,7 @@ export class EmployeesService {
   constructor(
     @InjectRepository(Employee)
     private readonly employeesRepository: Repository<Employee>,
+    private readonly usersService: UsersService,
   ) {}
 
   async create(
@@ -27,11 +34,53 @@ export class EmployeesService {
     user: ActiveUserInterface,
   ): Promise<Employee> {
     await this.assertDocumentAvailable(dto.documentId);
+
+    const { email, password, role, ...employeeData } = dto;
+    let userId = dto.userId;
+
+    // Alta opcional de la cuenta de acceso. Si ya se pasó un userId, se vincula
+    // ese User existente y se ignoran las credenciales.
+    if (!userId && email) {
+      userId = await this.createAccount(dto, email, password, role);
+    }
+
     const employee = this.employeesRepository.create({
-      ...dto,
+      ...employeeData,
+      userId,
       createdBy: user.id,
     });
     return this.employeesRepository.save(employee);
+  }
+
+  /** Crea el User de acceso con el rol derivado del puesto y devuelve su id. */
+  private async createAccount(
+    dto: CreateEmployeeDto,
+    email: string,
+    password?: string,
+    role?: CreateEmployeeDto['role'],
+  ): Promise<string> {
+    if (!password) {
+      throw new BadRequestException(
+        'Para crear el acceso debe indicar una contraseña.',
+      );
+    }
+    const existing = await this.usersService.findOneByEmail(email);
+    if (existing) {
+      throw new ConflictException(`Ya existe un usuario con el email ${email}.`);
+    }
+
+    const derivedRole =
+      role ?? POSITION_ROLE[dto.position ?? EmployeePosition.DRIVER];
+
+    const newUser = await this.usersService.create({
+      email,
+      name: `${dto.firstName} ${dto.lastName}`,
+      password: await bcryptjs.hash(password, 10),
+      isEmailVerified: true,
+      role: derivedRole,
+      phone: dto.phone,
+    });
+    return newUser.id;
   }
 
   paginate(
