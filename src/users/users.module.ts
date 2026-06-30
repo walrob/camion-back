@@ -5,6 +5,7 @@ import { UsersService } from './users.service';
 import { AuthModule } from 'src/auth/auth.module';
 import { UsersController } from './users.controller';
 import { StorageModule } from 'src/common/storage/storage.module';
+import { UsersSeeder } from './users.seeder';
 
 @Module({
   imports: [
@@ -13,7 +14,7 @@ import { StorageModule } from 'src/common/storage/storage.module';
     StorageModule,
   ],
   controllers: [UsersController],
-  providers: [UsersService],
+  providers: [UsersService, UsersSeeder],
   exports: [UsersService],
 })
 export class UsersModule {}

@@ -22,7 +22,11 @@ async function bootstrap() {
       const allowedOrigins =
         process.env.NODE_ENV === 'production'
           ? [process.env.FRONTEND_URL].filter(Boolean)
-          : ['http://localhost:3000', 'http://localhost:3001', 'http://10.0.2.2:3000'];
+          : [
+              'http://localhost:3000',
+              'http://localhost:3001',
+              'http://10.0.2.2:3000',
+            ];
 
       if (!origin) return callback(null, true);
       if (allowedOrigins.includes(origin)) return callback(null, true);
@@ -34,7 +38,7 @@ async function bootstrap() {
 
   if (process.env.NODE_ENV !== 'production') {
     const config = new DocumentBuilder()
-      .setTitle('ERP Textil')
+      .setTitle('FleetLog')
       .setDescription('API de gestión ERP para empresa textil.')
       .setVersion('1.0')
       .addBearerAuth()
@@ -45,7 +49,9 @@ async function bootstrap() {
 
   const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
   await app.listen(port, '0.0.0.0');
-  console.log(`✅ ERP Textil API corriendo en puerto ${port} - Modo ${process.env.NODE_ENV}`);
+  console.log(
+    `✅ FleetLog API corriendo en puerto ${port} - Modo ${process.env.NODE_ENV}`,
+  );
 }
 
 bootstrap();

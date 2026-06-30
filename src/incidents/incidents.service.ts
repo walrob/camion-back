@@ -73,6 +73,8 @@ export class IncidentsService {
       severity?: IncidentSeverity;
       truckId?: string;
       unassigned?: boolean;
+      from?: string;
+      to?: string;
     },
   ): Promise<Pagination<Incident>> {
     const page = Number(options.page);
@@ -90,6 +92,9 @@ export class IncidentsService {
     if (filters.severity) qb.andWhere('i.severity = :severity', { severity: filters.severity });
     if (filters.truckId) qb.andWhere('i.truckId = :truckId', { truckId: filters.truckId });
     if (filters.unassigned) qb.andWhere('i.assignedToUserId IS NULL');
+    if (filters.from) qb.andWhere('i.createdAt >= :from', { from: filters.from });
+    if (filters.to)
+      qb.andWhere('i.createdAt < :to', { to: this.addOneDay(filters.to) });
 
     return qb
       .take(limit)
@@ -181,6 +186,16 @@ export class IncidentsService {
     return this.eventsRepository.save(
       this.eventsRepository.create({ incidentId, userId, action, note }),
     );
+  }
+
+  /**
+   * Suma un día a una fecha 'YYYY-MM-DD' para que el filtro `to` incluya todo
+   * ese día: createdAt < (to + 1 día) cubre desde 00:00 hasta 23:59:59 de `to`.
+   */
+  private addOneDay(date: string): Date {
+    const d = new Date(`${date}T00:00:00`);
+    d.setDate(d.getDate() + 1);
+    return d;
   }
 
   private async generateCode(): Promise<string> {

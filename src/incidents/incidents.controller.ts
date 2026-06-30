@@ -53,6 +53,16 @@ export class IncidentsController {
   @ApiQuery({ name: 'severity', required: false, enum: IncidentSeverity })
   @ApiQuery({ name: 'truckId', required: false })
   @ApiQuery({ name: 'unassigned', required: false, type: Boolean })
+  @ApiQuery({
+    name: 'from',
+    required: false,
+    description: 'Fecha desde (inclusive, formato YYYY-MM-DD) sobre createdAt.',
+  })
+  @ApiQuery({
+    name: 'to',
+    required: false,
+    description: 'Fecha hasta (inclusive, formato YYYY-MM-DD) sobre createdAt.',
+  })
   findPagination(
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page = 1,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit = 20,
@@ -61,11 +71,21 @@ export class IncidentsController {
     @Query('severity') severity?: IncidentSeverity,
     @Query('truckId') truckId?: string,
     @Query('unassigned') unassigned?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
   ) {
     limit = limit > 100 ? 100 : limit;
     return this.incidentsService.paginate(
       { page, limit },
-      { status, type, severity, truckId, unassigned: unassigned === 'true' },
+      {
+        status,
+        type,
+        severity,
+        truckId,
+        unassigned: unassigned === 'true',
+        from,
+        to,
+      },
     );
   }
 

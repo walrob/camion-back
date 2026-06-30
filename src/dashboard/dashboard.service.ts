@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Between, Not, Repository } from 'typeorm';
+import { Not, Repository, SelectQueryBuilder } from 'typeorm';
 import { Truck } from 'src/fleet/entities/truck.entity';
 import { Trip } from 'src/trips/entities/trip.entity';
 import { TripLogEntry } from 'src/trip-log/entities/trip-log-entry.entity';
@@ -28,7 +28,7 @@ export class DashboardService {
     private readonly maintenanceService: MaintenanceService,
   ) {}
 
-  async getOverview() {
+  async getOverview(range: 'today' | '7d' | '30d' = '7d') {
     const [
       trucksByStatus,
       incidentsBySeverity,
@@ -38,6 +38,7 @@ export class DashboardService {
       driversWithNews,
       upcoming,
       openIncidents,
+      trends,
     ] = await Promise.all([
       this.groupCount(this.trucksRepository, 'status'),
       this.incidentsBySeverity(),
@@ -49,9 +50,11 @@ export class DashboardService {
       this.incidentsRepository.count({
         where: { status: Not(IncidentStatus.RESOLVED) },
       }),
+      this.buildTrends(range),
     ]);
 
     return {
+      range,
       trucksByStatus,
       incidents: {
         open: openIncidents,
@@ -65,7 +68,173 @@ export class DashboardService {
       delayedTrips,
       driversWithNews,
       upcomingMaintenance: upcoming.length,
+      trends,
     };
+  }
+
+  /**
+   * Bloque de tendencias del período: para cada métrica devuelve el valor del
+   * período actual, el del período inmediatamente anterior de igual duración
+   * (para calcular delta%) y la serie diaria (sparkline) de largo fijo.
+   */
+  private async buildTrends(range: 'today' | '7d' | '30d') {
+    const days = range === 'today' ? 1 : range === '30d' ? 30 : 7;
+
+    const now = new Date();
+    // Inicio del período actual: 00:00 del primer día de la ventana.
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - (days - 1));
+
+    // Ventana anterior de igual duración: [prevStart, prevEnd], terminando 1ms
+    // antes del inicio del período actual para no solapar el borde.
+    const prevStart = new Date(start);
+    prevStart.setDate(prevStart.getDate() - days);
+    const prevEnd = new Date(start.getTime() - 1);
+
+    const [
+      expensesSeries,
+      expensesPrev,
+      tripsSeries,
+      tripsPrev,
+      incidentsSeries,
+      incidentsPrev,
+    ] = await Promise.all([
+      // expenses: SUM(amount) excluyendo CASH_ADVANCE, por occurredAt.
+      this.dailySeries(
+        this.entriesRepository,
+        'e.occurredAt',
+        'COALESCE(SUM(e.amount), 0)',
+        start,
+        now,
+        days,
+        (qb) =>
+          qb.andWhere('e.type != :advance', {
+            advance: TripLogType.CASH_ADVANCE,
+          }),
+      ),
+      this.aggWindow(
+        this.entriesRepository,
+        'e.occurredAt',
+        'COALESCE(SUM(e.amount), 0)',
+        prevStart,
+        prevEnd,
+        (qb) =>
+          qb.andWhere('e.type != :advance', {
+            advance: TripLogType.CASH_ADVANCE,
+          }),
+      ),
+      // tripsFinished: COUNT(Trip) status=finished, por finishedAt.
+      this.dailySeries(
+        this.tripsRepository,
+        'e.finishedAt',
+        'COUNT(*)',
+        start,
+        now,
+        days,
+        (qb) =>
+          qb.andWhere('e.status = :finished', {
+            finished: TripStatus.FINISHED,
+          }),
+      ),
+      this.aggWindow(
+        this.tripsRepository,
+        'e.finishedAt',
+        'COUNT(*)',
+        prevStart,
+        prevEnd,
+        (qb) =>
+          qb.andWhere('e.status = :finished', {
+            finished: TripStatus.FINISHED,
+          }),
+      ),
+      // incidentsReported: COUNT(Incident) por createdAt.
+      this.dailySeries(
+        this.incidentsRepository,
+        'e.createdAt',
+        'COUNT(*)',
+        start,
+        now,
+        days,
+      ),
+      this.aggWindow(
+        this.incidentsRepository,
+        'e.createdAt',
+        'COUNT(*)',
+        prevStart,
+        prevEnd,
+      ),
+    ]);
+
+    const sum = (s: number[]) => s.reduce((a, b) => a + b, 0);
+
+    return {
+      expenses: {
+        value: Math.round(sum(expensesSeries) * 100) / 100,
+        previousValue: expensesPrev,
+        series: expensesSeries,
+      },
+      tripsFinished: {
+        value: sum(tripsSeries),
+        previousValue: tripsPrev,
+        series: tripsSeries,
+      },
+      incidentsReported: {
+        value: sum(incidentsSeries),
+        previousValue: incidentsPrev,
+        series: incidentsSeries,
+      },
+    };
+  }
+
+  /**
+   * Serie diaria agregada dentro de [start, end] con largo fijo `days` en orden
+   * cronológico ascendente, completando con 0 los días sin datos. Usa DATEDIFF
+   * para asignar cada fila a su bucket de día sin traer filas a memoria.
+   */
+  private async dailySeries(
+    repo: Repository<any>,
+    dateCol: string,
+    agg: string,
+    start: Date,
+    end: Date,
+    days: number,
+    applyFilters?: (qb: SelectQueryBuilder<any>) => void,
+  ): Promise<number[]> {
+    const qb = repo
+      .createQueryBuilder('e')
+      .select(`DATEDIFF(${dateCol}, :start)`, 'idx')
+      .addSelect(agg, 'v')
+      .where(`${dateCol} BETWEEN :start AND :end`, { start, end })
+      .groupBy('idx');
+    applyFilters?.(qb);
+
+    const rows = await qb.getRawMany<{ idx: string; v: string }>();
+    const series = new Array<number>(days).fill(0);
+    for (const r of rows) {
+      const i = Number(r.idx);
+      if (i >= 0 && i < days) series[i] = Number(r.v);
+    }
+    return series;
+  }
+
+  /** Valor agregado escalar dentro de [start, end]. */
+  private async aggWindow(
+    repo: Repository<any>,
+    dateCol: string,
+    agg: string,
+    start: Date,
+    end: Date,
+    applyFilters?: (qb: SelectQueryBuilder<any>) => void,
+  ): Promise<number> {
+    const qb = repo
+      .createQueryBuilder('e')
+      .select(agg, 'v')
+      .where(`${dateCol} BETWEEN :start AND :end`, { start, end });
+    applyFilters?.(qb);
+
+    const row = await qb.getRawOne<{ v: string }>();
+    return Math.round(Number(row?.v ?? 0) * 100) / 100;
   }
 
   private async groupCount(
