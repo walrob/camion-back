@@ -9,6 +9,7 @@ import { Response } from 'express';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { IndicatorsService } from './indicators.service';
 import { IndicatorFilterDto } from './dto/indicator-filter.dto';
+import { ExpenseGroupFilterDto } from './dto/expense-group-filter.dto';
 import { Auth } from 'src/auth/decorators/auth.decorator';
 import { Role } from 'src/common/enums/role.enum';
 
@@ -22,6 +23,13 @@ export class IndicatorsController {
   @Auth(Role.ADMIN, Role.MANAGER, Role.AUDITOR)
   summary(@Query() filter: IndicatorFilterDto) {
     return this.indicatorsService.summary(filter);
+  }
+
+  // Detalle completo de gastos por camión/chofer (para el modal "Ver todos").
+  @Get('expenses')
+  @Auth(Role.ADMIN, Role.MANAGER, Role.AUDITOR)
+  expenses(@Query() filter: ExpenseGroupFilterDto) {
+    return this.indicatorsService.expensesByGroup(filter, filter.group);
   }
 
   @Get('export')

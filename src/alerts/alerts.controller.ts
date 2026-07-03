@@ -26,11 +26,23 @@ export class AlertsController {
   @Auth(Role.ADMIN, Role.MANAGER, Role.DISPATCHER, Role.HR)
   @ApiQuery({ name: 'level', required: false, enum: AlertLevel })
   @ApiQuery({ name: 'status', required: false, enum: AlertStatus })
+  @ApiQuery({
+    name: 'from',
+    required: false,
+    description: 'Fecha desde (inclusive, formato YYYY-MM-DD) sobre createdAt.',
+  })
+  @ApiQuery({
+    name: 'to',
+    required: false,
+    description: 'Fecha hasta (inclusive, formato YYYY-MM-DD) sobre createdAt.',
+  })
   list(
     @Query('level') level?: AlertLevel,
     @Query('status') status?: AlertStatus,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
   ) {
-    return this.alertsService.list({ level, status });
+    return this.alertsService.list({ level, status, from, to });
   }
 
   @Get('count')
