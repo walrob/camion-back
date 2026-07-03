@@ -16,6 +16,14 @@ import { Role } from 'src/common/enums/role.enum';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
 import { DriversService } from 'src/drivers/drivers.service';
 import { paginateAndSearch } from 'src/common/utils/paginate-and-search.util';
+import {
+  DateWindowOptions,
+  resolveDateWindow,
+} from 'src/common/utils/date-window.util';
+
+// Ventana del reporte de combustible. Cálculo tanque-lleno en memoria: se
+// mantiene acotado. Ajustable de forma independiente al resto de reportes.
+const REPORT_WINDOW: DateWindowOptions = { defaultDays: 30, maxMonths: 6 };
 
 // Rendimiento calculado por tramos entre cargas con tanque lleno.
 interface Efficiency {
@@ -274,7 +282,9 @@ export class FuelService {
   }
 
   async report(f: FuelFilterDto) {
-    const records = await this.filterQuery(f).getMany();
+    // Acota siempre la ventana (default/tope configurables por endpoint).
+    const window = resolveDateWindow(f.from, f.to, REPORT_WINDOW);
+    const records = await this.filterQuery({ ...f, ...window }).getMany();
 
     // Agrupar por camión preservando el orden cronológico de la consulta.
     const truckGroups = new Map<string, FuelRecord[]>();

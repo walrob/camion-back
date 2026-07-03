@@ -10,6 +10,19 @@ import { TripLogType } from 'src/common/enums/tripLogType.enum';
 import { IncidentType } from 'src/common/enums/incident.enum';
 import { TruckStatus } from 'src/common/enums/truckStatus.enum';
 import { IndicatorFilterDto } from './dto/indicator-filter.dto';
+import { ExpenseGroup } from './dto/expense-group-filter.dto';
+import {
+  DateWindowOptions,
+  resolveDateWindow,
+} from 'src/common/utils/date-window.util';
+
+// Top N de gastos que devuelve el summary (vista de página). El detalle completo
+// se obtiene bajo demanda desde el endpoint `expenses`.
+const TOP_EXPENSES = 10;
+
+// Ventana de los indicadores (summary + detalle de gastos). Agregación en SQL:
+// ajustable de forma independiente al reporte de combustible.
+const INDICATORS_WINDOW: DateWindowOptions = { defaultDays: 30, maxMonths: 6 };
 
 @Injectable()
 export class IndicatorsService {
@@ -80,16 +93,33 @@ export class IndicatorsService {
   private async expenseByGroup(
     f: IndicatorFilterDto,
     keyExpr: string,
-    alias: string,
+    limit?: number,
   ): Promise<{ key: string; total: number }[]> {
-    const rows = await this.expenseQuery(f)
+    const qb = this.expenseQuery(f)
       .select(keyExpr, 'k')
       .addSelect('COALESCE(SUM(e.amount),0)', 'total')
       .andWhere('e.type != :adv', { adv: TripLogType.CASH_ADVANCE })
       .groupBy(keyExpr)
-      .orderBy('total', 'DESC')
-      .getRawMany();
+      .orderBy('total', 'DESC');
+    if (limit) qb.limit(limit);
+    const rows = await qb.getRawMany();
     return rows.map((r) => ({ key: r.k ?? '-', total: Number(r.total) }));
+  }
+
+  // Expresión de la dimensión a agrupar (patente del camión / nombre del chofer).
+  private groupKeyExpr(group: ExpenseGroup): string {
+    return group === 'driver'
+      ? "CONCAT(emp.firstName, ' ', emp.lastName)"
+      : 'truck.plate';
+  }
+
+  // Detalle completo (sin límite) de gastos por dimensión, para el modal "Ver todos".
+  async expensesByGroup(
+    f: IndicatorFilterDto,
+    group: ExpenseGroup,
+  ): Promise<{ key: string; total: number }[]> {
+    const window = resolveDateWindow(f.from, f.to, INDICATORS_WINDOW);
+    return this.expenseByGroup({ ...f, ...window }, this.groupKeyExpr(group));
   }
 
   private async breakdownsByTruck(f: IndicatorFilterDto) {
@@ -133,13 +163,15 @@ export class IndicatorsService {
   }
 
   async summary(f: IndicatorFilterDto) {
+    // Acota siempre la ventana (default/tope configurables por endpoint).
+    f = { ...f, ...resolveDateWindow(f.from, f.to, INDICATORS_WINDOW) };
     const [expenses, distance, liters, byTruck, byDriver, extraordinary, breakdowns, resolution, availability] =
       await Promise.all([
         this.sumExpenses(f),
         this.sumDistance(f),
         this.sumLiters(f),
-        this.expenseByGroup(f, 'truck.plate', 'truck'),
-        this.expenseByGroup(f, "CONCAT(emp.firstName, ' ', emp.lastName)", 'driver'),
+        this.expenseByGroup(f, this.groupKeyExpr('truck'), TOP_EXPENSES),
+        this.expenseByGroup(f, this.groupKeyExpr('driver'), TOP_EXPENSES),
         this.sumExpenses(f, [TripLogType.REPAIR, TripLogType.FINE]),
         this.breakdownsByTruck(f),
         this.incidentResolutionAvgHours(f),
@@ -161,7 +193,12 @@ export class IndicatorsService {
   }
 
   async exportXlsx(f: IndicatorFilterDto): Promise<Buffer> {
-    const s = await this.summary(f);
+    // El summary trae solo el top 10; para el Excel exportamos las listas completas.
+    const [s, byTruck, byDriver] = await Promise.all([
+      this.summary(f),
+      this.expensesByGroup(f, 'truck'),
+      this.expensesByGroup(f, 'driver'),
+    ]);
     const wb = XLSX.utils.book_new();
 
     const resumen = [
@@ -176,12 +213,12 @@ export class IndicatorsService {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resumen), 'Resumen');
     XLSX.utils.book_append_sheet(
       wb,
-      XLSX.utils.json_to_sheet(s.expenseByTruck.map((x) => ({ Camion: x.key, Gasto: x.total }))),
+      XLSX.utils.json_to_sheet(byTruck.map((x) => ({ Camion: x.key, Gasto: x.total }))),
       'Gasto x camión',
     );
     XLSX.utils.book_append_sheet(
       wb,
-      XLSX.utils.json_to_sheet(s.expenseByDriver.map((x) => ({ Chofer: x.key, Gasto: x.total }))),
+      XLSX.utils.json_to_sheet(byDriver.map((x) => ({ Chofer: x.key, Gasto: x.total }))),
       'Gasto x chofer',
     );
     XLSX.utils.book_append_sheet(

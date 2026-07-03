@@ -187,15 +187,30 @@ export class AlertsService {
   }
 
   // ───────── Consulta y estado ─────────
-  list(filters: { level?: AlertLevel; status?: AlertStatus }): Promise<Alert[]> {
-    return this.alertsRepository.find({
-      where: {
-        ...(filters.level && { level: filters.level }),
-        ...(filters.status && { status: filters.status }),
-      },
-      order: { createdAt: 'DESC' },
-      take: 200,
-    });
+  list(filters: {
+    level?: AlertLevel;
+    status?: AlertStatus;
+    from?: string;
+    to?: string;
+  }): Promise<Alert[]> {
+    const qb = this.alertsRepository.createQueryBuilder('a');
+    if (filters.level) qb.andWhere('a.level = :level', { level: filters.level });
+    if (filters.status)
+      qb.andWhere('a.status = :status', { status: filters.status });
+    if (filters.from) qb.andWhere('a.createdAt >= :from', { from: filters.from });
+    if (filters.to)
+      qb.andWhere('a.createdAt < :to', { to: this.addOneDay(filters.to) });
+    return qb.orderBy('a.createdAt', 'DESC').take(200).getMany();
+  }
+
+  /**
+   * Suma un día a una fecha 'YYYY-MM-DD' para que el filtro `to` incluya todo
+   * ese día: createdAt < (to + 1 día) cubre desde 00:00 hasta 23:59:59 de `to`.
+   */
+  private addOneDay(date: string): Date {
+    const d = new Date(`${date}T00:00:00`);
+    d.setDate(d.getDate() + 1);
+    return d;
   }
 
   countActive(): Promise<number> {
