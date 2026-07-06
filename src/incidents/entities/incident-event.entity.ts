@@ -7,6 +7,7 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { Incident } from './incident.entity';
+import { User } from 'src/users/entities/user.entity';
 
 @Entity('incident_events')
 export class IncidentEvent {
@@ -28,7 +29,11 @@ export class IncidentEvent {
   @Column({ nullable: true })
   userId: string;
 
-  // created | assigned | status_changed | comment
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'userId' })
+  user?: User;
+
+  // created | assigned | status_changed | severity_changed | comment
   @Column()
   action: string;
 

@@ -60,10 +60,14 @@ export class MessagesService {
       .getMany();
   }
 
-  /** Bandeja del backoffice: mensajes dirigidos a mí o a mi rol. */
+  /**
+   * Bandeja del backoffice: mensajes en los que participo, ya sea recibidos
+   * (a mí o a mi rol) o enviados por mí. Incluir los enviados permite ver una
+   * conversación que inicié aunque el chofer todavía no haya respondido.
+   */
   inbox(meId: string, myRole: string): Promise<Message[]> {
     return this.messagesRepository.find({
-      where: [{ toUserId: meId }, { toRole: myRole }],
+      where: [{ toUserId: meId }, { toRole: myRole }, { fromUserId: meId }],
       order: { createdAt: 'DESC' },
       take: 100,
     });

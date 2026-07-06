@@ -14,6 +14,7 @@ import { IncidentsService } from './incidents.service';
 import { CreateIncidentDto } from './dto/create-incident.dto';
 import { AssignIncidentDto } from './dto/assign-incident.dto';
 import { ChangeIncidentStatusDto } from './dto/change-status.dto';
+import { ChangeIncidentSeverityDto } from './dto/change-severity.dto';
 import { CommentIncidentDto } from './dto/comment-incident.dto';
 import {
   IncidentSeverity,
@@ -53,6 +54,7 @@ export class IncidentsController {
   @ApiQuery({ name: 'severity', required: false, enum: IncidentSeverity })
   @ApiQuery({ name: 'truckId', required: false })
   @ApiQuery({ name: 'unassigned', required: false, type: Boolean })
+  @ApiQuery({ name: 'assignedToUserId', required: false })
   @ApiQuery({
     name: 'from',
     required: false,
@@ -71,6 +73,7 @@ export class IncidentsController {
     @Query('severity') severity?: IncidentSeverity,
     @Query('truckId') truckId?: string,
     @Query('unassigned') unassigned?: string,
+    @Query('assignedToUserId') assignedToUserId?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
@@ -83,6 +86,7 @@ export class IncidentsController {
         severity,
         truckId,
         unassigned: unassigned === 'true',
+        assignedToUserId,
         from,
         to,
       },
@@ -113,6 +117,16 @@ export class IncidentsController {
     @ActiveUser() user: ActiveUserInterface,
   ) {
     return this.incidentsService.changeStatus(id, dto, user);
+  }
+
+  @Patch(':id/severity')
+  @Auth(Role.ADMIN, Role.DISPATCHER, Role.MANAGER)
+  changeSeverity(
+    @Param('id') id: string,
+    @Body() dto: ChangeIncidentSeverityDto,
+    @ActiveUser() user: ActiveUserInterface,
+  ) {
+    return this.incidentsService.changeSeverity(id, dto, user);
   }
 
   @Post(':id/comment')

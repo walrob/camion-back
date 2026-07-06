@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { IPaginationOptions, Pagination } from 'nestjs-typeorm-paginate';
 import { Driver } from './entities/driver.entity';
 import { Employee } from 'src/hr/entities/employee.entity';
@@ -92,6 +92,15 @@ export class DriversService {
     });
     if (!driver) throw new NotFoundException('Chofer no encontrado.');
     return driver;
+  }
+
+  /** Carga varios choferes por id con su legajo y usuario (para enriquecer listados). */
+  findByIds(ids: string[]): Promise<Driver[]> {
+    if (!ids.length) return Promise.resolve([]);
+    return this.driversRepository.find({
+      where: { id: In(ids) },
+      relations: ['employee', 'employee.user'],
+    });
   }
 
   /** Resuelve el Driver del usuario logueado a través de Employee.userId. */

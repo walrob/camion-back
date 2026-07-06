@@ -1,8 +1,16 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { LessThanOrEqual, Not, Repository } from 'typeorm';
+import {
+  In,
+  LessThanOrEqual,
+  Not,
+  ObjectLiteral,
+  Repository,
+} from 'typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Document } from './entities/document.entity';
+import { Truck } from 'src/fleet/entities/truck.entity';
+import { Trailer } from 'src/fleet/entities/trailer.entity';
 import { CreateDocumentDto } from './dto/create-document.dto';
 import { UpdateDocumentDto } from './dto/update-document.dto';
 import {
@@ -18,11 +26,27 @@ import { DriversService } from 'src/drivers/drivers.service';
 
 const WARNING_DAYS = 30;
 
+export interface DocumentOwner {
+  type: DocumentOwnerType;
+  id: string | null;
+  label?: string;
+  /** Dato secundario: tipo de licencia (chofer), marca/modelo (camión), tipo (acoplado). */
+  sublabel?: string | null;
+  /** Solo para choferes: para poder mandarle un mensaje. */
+  userId?: string | null;
+  /** Solo para choferes: para llamar/WhatsApp. */
+  phone?: string | null;
+}
+
 @Injectable()
 export class DocumentsService {
   constructor(
     @InjectRepository(Document)
     private readonly documentsRepository: Repository<Document>,
+    @InjectRepository(Truck)
+    private readonly trucksRepository: Repository<Truck>,
+    @InjectRepository(Trailer)
+    private readonly trailersRepository: Repository<Trailer>,
     private readonly storageService: StorageService,
     private readonly alertsService: AlertsService,
     private readonly driversService: DriversService,
@@ -73,16 +97,95 @@ export class DocumentsService {
     });
   }
 
-  expiring(days = WARNING_DAYS): Promise<Document[]> {
+  async expiring(days = WARNING_DAYS): Promise<Array<Document & { owner: DocumentOwner }>> {
     const limit = new Date();
     limit.setDate(limit.getDate() + days);
-    return this.documentsRepository.find({
+    const docs = await this.documentsRepository.find({
       where: {
         expiryDate: LessThanOrEqual(limit.toISOString().slice(0, 10)),
         status: Not(DocumentStatus.VALID),
       },
       order: { expiryDate: 'ASC' },
     });
+
+    // Resolvemos los dueños en lote (documento es polimórfico: ownerType/ownerId).
+    const idsOf = (t: DocumentOwnerType) => [
+      ...new Set(
+        docs
+          .filter((d) => d.ownerType === t && d.ownerId)
+          .map((d) => d.ownerId),
+      ),
+    ];
+
+    const [trucks, trailers, drivers] = await Promise.all([
+      this.findByIdsSafe(this.trucksRepository, idsOf(DocumentOwnerType.TRUCK)),
+      this.findByIdsSafe(
+        this.trailersRepository,
+        idsOf(DocumentOwnerType.TRAILER),
+      ),
+      this.driversService.findByIds(idsOf(DocumentOwnerType.DRIVER)),
+    ]);
+
+    const truckMap = new Map(trucks.map((t) => [t.id, t]));
+    const trailerMap = new Map(trailers.map((t) => [t.id, t]));
+    const driverMap = new Map(drivers.map((d) => [d.id, d]));
+
+    return docs.map((d) => ({ ...d, owner: this.buildOwner(d, {
+      truckMap,
+      trailerMap,
+      driverMap,
+    }) }));
+  }
+
+  private findByIdsSafe<T extends ObjectLiteral>(
+    repo: Repository<T>,
+    ids: string[],
+  ): Promise<T[]> {
+    if (!ids.length) return Promise.resolve([]);
+    return repo.find({ where: { id: In(ids) } as any });
+  }
+
+  private buildOwner(
+    doc: Document,
+    maps: {
+      truckMap: Map<string, Truck>;
+      trailerMap: Map<string, Trailer>;
+      driverMap: Map<string, any>;
+    },
+  ): DocumentOwner {
+    const base: DocumentOwner = {
+      type: doc.ownerType,
+      id: doc.ownerId ?? null,
+    };
+    if (doc.ownerType === DocumentOwnerType.TRUCK) {
+      const t = maps.truckMap.get(doc.ownerId);
+      return {
+        ...base,
+        label: t?.plate ?? 'Camión',
+        sublabel:
+          [t?.brand, t?.model].filter(Boolean).join(' ') ||
+          t?.internalNumber ||
+          null,
+      };
+    }
+    if (doc.ownerType === DocumentOwnerType.TRAILER) {
+      const t = maps.trailerMap.get(doc.ownerId);
+      return { ...base, label: t?.plate ?? 'Acoplado', sublabel: t?.type ?? null };
+    }
+    if (doc.ownerType === DocumentOwnerType.DRIVER) {
+      const dr = maps.driverMap.get(doc.ownerId);
+      const emp = dr?.employee;
+      return {
+        ...base,
+        label: emp
+          ? `${emp.firstName} ${emp.lastName}`.trim()
+          : (dr?.licenseNumber ?? 'Chofer'),
+        sublabel: dr?.licenseType ?? null,
+        userId: emp?.user?.id ?? null,
+        phone: emp?.phone ?? null,
+      };
+    }
+    return { ...base, label: 'Empresa' };
   }
 
   async findForDriver(userId: string, truckId?: string): Promise<Document[]> {
