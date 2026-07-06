@@ -16,6 +16,7 @@ import {
 } from 'src/common/enums/incident.enum';
 import { Truck } from 'src/fleet/entities/truck.entity';
 import { Driver } from 'src/drivers/entities/driver.entity';
+import { User } from 'src/users/entities/user.entity';
 import { IncidentEvent } from './incident-event.entity';
 
 @Entity('incidents')
@@ -80,6 +81,10 @@ export class Incident {
 
   @Column({ nullable: true })
   assignedToUserId: string;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'assignedToUserId' })
+  assignedTo?: User;
 
   @Column({ type: 'decimal', precision: 10, scale: 6, nullable: true })
   lat: number;

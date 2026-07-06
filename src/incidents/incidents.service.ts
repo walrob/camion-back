@@ -7,6 +7,7 @@ import { IncidentEvent } from './entities/incident-event.entity';
 import { CreateIncidentDto } from './dto/create-incident.dto';
 import { AssignIncidentDto } from './dto/assign-incident.dto';
 import { ChangeIncidentStatusDto } from './dto/change-status.dto';
+import { ChangeIncidentSeverityDto } from './dto/change-severity.dto';
 import { CommentIncidentDto } from './dto/comment-incident.dto';
 import {
   IncidentSeverity,
@@ -14,6 +15,7 @@ import {
   IncidentType,
 } from 'src/common/enums/incident.enum';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
+import { User } from 'src/users/entities/user.entity';
 import { DriversService } from 'src/drivers/drivers.service';
 import { IncidentsGateway } from './incidents.gateway';
 import { AlertsService } from 'src/alerts/alerts.service';
@@ -73,6 +75,7 @@ export class IncidentsService {
       severity?: IncidentSeverity;
       truckId?: string;
       unassigned?: boolean;
+      assignedToUserId?: string;
       from?: string;
       to?: string;
     },
@@ -85,6 +88,8 @@ export class IncidentsService {
       .leftJoinAndSelect('i.truck', 'truck')
       .leftJoinAndSelect('i.driver', 'driver')
       .leftJoinAndSelect('driver.employee', 'employee')
+      .leftJoin('i.assignedTo', 'assignedTo')
+      .addSelect(['assignedTo.id', 'assignedTo.name'])
       .orderBy('i.createdAt', 'DESC');
 
     if (filters.status) qb.andWhere('i.status = :status', { status: filters.status });
@@ -92,6 +97,10 @@ export class IncidentsService {
     if (filters.severity) qb.andWhere('i.severity = :severity', { severity: filters.severity });
     if (filters.truckId) qb.andWhere('i.truckId = :truckId', { truckId: filters.truckId });
     if (filters.unassigned) qb.andWhere('i.assignedToUserId IS NULL');
+    if (filters.assignedToUserId)
+      qb.andWhere('i.assignedToUserId = :assignedToUserId', {
+        assignedToUserId: filters.assignedToUserId,
+      });
     if (filters.from) qb.andWhere('i.createdAt >= :from', { from: filters.from });
     if (filters.to)
       qb.andWhere('i.createdAt < :to', { to: this.addOneDay(filters.to) });
@@ -124,10 +133,27 @@ export class IncidentsService {
   async findOne(id: string): Promise<Incident> {
     const incident = await this.incidentsRepository.findOne({
       where: { id },
-      relations: ['truck', 'driver', 'driver.employee', 'events'],
+      relations: [
+        'truck',
+        'driver',
+        'driver.employee',
+        'assignedTo',
+        'events',
+        'events.user',
+      ],
       order: { events: { at: 'ASC' } },
     });
     if (!incident) throw new NotFoundException('Incidente no encontrado.');
+    // Exponemos solo id y nombre del responsable y del autor de cada evento
+    // (sin email/rol/etc.).
+    if (incident.assignedTo)
+      incident.assignedTo = {
+        id: incident.assignedTo.id,
+        name: incident.assignedTo.name,
+      } as User;
+    incident.events?.forEach((e) => {
+      if (e.user) e.user = { id: e.user.id, name: e.user.name } as User;
+    });
     return incident;
   }
 
@@ -158,6 +184,25 @@ export class IncidentsService {
     incident.updatedBy = user.id;
     await this.incidentsRepository.save(incident);
     await this.addEvent(id, user.id, 'status_changed', dto.note ?? dto.status);
+    return this.emitAndReturn(id);
+  }
+
+  async changeSeverity(
+    id: string,
+    dto: ChangeIncidentSeverityDto,
+    user: ActiveUserInterface,
+  ): Promise<Incident> {
+    const incident = await this.findOne(id);
+    const previous = incident.severity;
+    incident.severity = dto.severity;
+    incident.updatedBy = user.id;
+    await this.incidentsRepository.save(incident);
+    await this.addEvent(
+      id,
+      user.id,
+      'severity_changed',
+      `${previous} → ${dto.severity}`,
+    );
     return this.emitAndReturn(id);
   }
 

@@ -1,6 +1,8 @@
 import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Document } from './entities/document.entity';
+import { Truck } from 'src/fleet/entities/truck.entity';
+import { Trailer } from 'src/fleet/entities/trailer.entity';
 import { DocumentsService } from './documents.service';
 import { DocumentsController } from './documents.controller';
 import { AuthModule } from 'src/auth/auth.module';
@@ -10,7 +12,7 @@ import { DriversModule } from 'src/drivers/drivers.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Document]),
+    TypeOrmModule.forFeature([Document, Truck, Trailer]),
     forwardRef(() => AuthModule),
     StorageModule,
     AlertsModule,
