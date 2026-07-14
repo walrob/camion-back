@@ -40,6 +40,16 @@ export class TripsController {
   @ApiQuery({ name: 'status', required: false, enum: TripStatus })
   @ApiQuery({ name: 'truckId', required: false })
   @ApiQuery({ name: 'driverId', required: false })
+  @ApiQuery({
+    name: 'from',
+    required: false,
+    description: 'Fecha desde (inclusive, formato YYYY-MM-DD) sobre createdAt.',
+  })
+  @ApiQuery({
+    name: 'to',
+    required: false,
+    description: 'Fecha hasta (inclusive, formato YYYY-MM-DD) sobre createdAt.',
+  })
   findPagination(
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page = 1,
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit = 10,
@@ -47,11 +57,13 @@ export class TripsController {
     @Query('status') status?: TripStatus,
     @Query('truckId') truckId?: string,
     @Query('driverId') driverId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
   ) {
     limit = limit > 100 ? 100 : limit;
     return this.tripsService.paginate(
       { page, limit },
-      { search, status, truckId, driverId },
+      { search, status, truckId, driverId, from, to },
     );
   }
 

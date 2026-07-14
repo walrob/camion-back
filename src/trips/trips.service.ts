@@ -47,6 +47,8 @@ export class TripsService {
       status?: TripStatus;
       truckId?: string;
       driverId?: string;
+      from?: string;
+      to?: string;
     },
   ): Promise<Pagination<Trip>> {
     return paginateAndSearch<Trip>(this.tripsRepository, {
@@ -54,8 +56,12 @@ export class TripsService {
       limit: Number(options.limit),
       search: filters.search,
       searchFields: ['code', 'origin', 'destination'],
-      orderBy: 'createdAt',
+      orderBy: 'plannedStartAt',
       order: 'DESC',
+      dateField: 'plannedStartAt',
+      from: filters.from,
+      // Fin de día para que el rango incluya los viajes creados en la fecha `to`.
+      to: filters.to ? `${filters.to} 23:59:59.999` : undefined,
       relations: ['truck', 'driver', 'driver.employee', 'trailer'],
       baseWhere: {
         ...(filters.status && { status: filters.status }),
@@ -74,10 +80,7 @@ export class TripsService {
     return trip;
   }
 
-  async findMine(
-    userId: string,
-    status?: TripStatus,
-  ): Promise<Trip[]> {
+  async findMine(userId: string, status?: TripStatus): Promise<Trip[]> {
     const driver = await this.driversService.findByUserId(userId);
     return this.tripsRepository.find({
       where: { driverId: driver.id, ...(status && { status }) },
@@ -129,7 +132,11 @@ export class TripsService {
     trip.updatedBy = user.id;
     const saved = await this.tripsRepository.save(trip);
 
-    await this.trucksService.update(trip.truckId, { status: TruckStatus.ON_TRIP }, user);
+    await this.trucksService.update(
+      trip.truckId,
+      { status: TruckStatus.ON_TRIP },
+      user,
+    );
     await this.driversService.update(
       trip.driverId,
       { status: DriverStatus.ON_TRIP },
@@ -148,7 +155,10 @@ export class TripsService {
     if (trip.status !== TripStatus.IN_PROGRESS) {
       throw new BadRequestException('El viaje no está en curso.');
     }
-    if (trip.startOdometerKm != null && dto.endOdometerKm < trip.startOdometerKm) {
+    if (
+      trip.startOdometerKm != null &&
+      dto.endOdometerKm < trip.startOdometerKm
+    ) {
       throw new BadRequestException(
         'El odómetro final no puede ser menor al inicial.',
       );
@@ -169,7 +179,11 @@ export class TripsService {
       { currentOdometerKm: dto.endOdometerKm },
       user,
     );
-    await this.trucksService.update(trip.truckId, { status: TruckStatus.AVAILABLE }, user);
+    await this.trucksService.update(
+      trip.truckId,
+      { status: TruckStatus.AVAILABLE },
+      user,
+    );
     await this.driversService.update(
       trip.driverId,
       { status: DriverStatus.ACTIVE },
@@ -182,14 +196,24 @@ export class TripsService {
   async cancel(id: string, user: ActiveUserInterface): Promise<Trip> {
     const trip = await this.findOne(id);
     if (trip.status === TripStatus.FINISHED) {
-      throw new BadRequestException('No se puede cancelar un viaje finalizado.');
+      throw new BadRequestException(
+        'No se puede cancelar un viaje finalizado.',
+      );
     }
     trip.status = TripStatus.CANCELED;
     trip.updatedBy = user.id;
     // Liberar recursos si estaba en curso.
     if (trip.startedAt) {
-      await this.trucksService.update(trip.truckId, { status: TruckStatus.AVAILABLE }, user);
-      await this.driversService.update(trip.driverId, { status: DriverStatus.ACTIVE }, user);
+      await this.trucksService.update(
+        trip.truckId,
+        { status: TruckStatus.AVAILABLE },
+        user,
+      );
+      await this.driversService.update(
+        trip.driverId,
+        { status: DriverStatus.ACTIVE },
+        user,
+      );
     }
     return this.tripsRepository.save(trip);
   }
