@@ -13,6 +13,17 @@ import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface
 import { TripsService } from 'src/trips/trips.service';
 import { TripLogService } from 'src/trip-log/trip-log.service';
 import { StorageService } from 'src/common/storage/storage.service';
+import { resolveSort } from 'src/common/utils/resolve-sort.util';
+
+// Columnas ordenables (clave del front → columna con alias del query builder).
+const SETTLEMENT_SORTABLE: Record<string, string> = {
+  'trip.code': 't.code',
+  totalExpenses: 's.totalExpenses',
+  totalAdvances: 's.totalAdvances',
+  netToSettle: 's.netToSettle',
+  status: 's.status',
+  createdAt: 's.createdAt',
+};
 
 const TYPE_LABELS: Record<string, string> = {
   fuel: 'Combustible',
@@ -97,17 +108,29 @@ export class SettlementsService {
 
   async paginate(
     options: IPaginationOptions,
-    filters: { status?: SettlementStatus; driverId?: string; from?: string; to?: string },
+    filters: {
+      status?: SettlementStatus;
+      driverId?: string;
+      from?: string;
+      to?: string;
+      sortBy?: string;
+      order?: string;
+    },
   ): Promise<Pagination<Settlement>> {
     const page = Number(options.page);
     const limit = Number(options.limit);
+
+    const sort = resolveSort(filters.sortBy, filters.order, SETTLEMENT_SORTABLE, {
+      orderBy: 's.createdAt',
+      order: 'DESC',
+    });
 
     const qb = this.settlementsRepository
       .createQueryBuilder('s')
       .leftJoinAndSelect('s.trip', 't')
       .leftJoinAndSelect('t.driver', 'd')
       .leftJoinAndSelect('d.employee', 'emp')
-      .orderBy('s.createdAt', 'DESC');
+      .orderBy(sort.orderBy, sort.order);
 
     if (filters.status) qb.andWhere('s.status = :status', { status: filters.status });
     if (filters.driverId) qb.andWhere('t.driverId = :driverId', { driverId: filters.driverId });

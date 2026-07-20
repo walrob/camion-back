@@ -17,9 +17,21 @@ import { TruckStatus } from 'src/common/enums/truckStatus.enum';
 import { DriverStatus } from 'src/common/enums/driverStatus.enum';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
 import { paginateAndSearch } from 'src/common/utils/paginate-and-search.util';
+import { resolveSort } from 'src/common/utils/resolve-sort.util';
 import { TrucksService } from 'src/fleet/trucks.service';
 import { DriversService } from 'src/drivers/drivers.service';
 import { ChecklistsService } from 'src/checklists/checklists.service';
+
+// Columnas por las que se permite ordenar (clave del front → columna/alias real).
+const TRIP_SORTABLE: Record<string, string> = {
+  code: 'code',
+  origin: 'origin',
+  destination: 'destination',
+  'truck.plate': 'truck.plate',
+  status: 'status',
+  plannedStartAt: 'plannedStartAt',
+  createdAt: 'createdAt',
+};
 
 @Injectable()
 export class TripsService {
@@ -49,15 +61,23 @@ export class TripsService {
       driverId?: string;
       from?: string;
       to?: string;
+      sortBy?: string;
+      order?: string;
     },
   ): Promise<Pagination<Trip>> {
+    const { orderBy, order } = resolveSort(
+      filters.sortBy,
+      filters.order,
+      TRIP_SORTABLE,
+      { orderBy: 'plannedStartAt', order: 'DESC' },
+    );
     return paginateAndSearch<Trip>(this.tripsRepository, {
       page: Number(options.page),
       limit: Number(options.limit),
       search: filters.search,
       searchFields: ['code', 'origin', 'destination'],
-      orderBy: 'plannedStartAt',
-      order: 'DESC',
+      orderBy,
+      order,
       dateField: 'plannedStartAt',
       from: filters.from,
       // Fin de día para que el rango incluya los viajes creados en la fecha `to`.

@@ -36,6 +36,8 @@ export class SettlementsController {
   @ApiQuery({ name: 'driverId', required: false })
   @ApiQuery({ name: 'from', required: false })
   @ApiQuery({ name: 'to', required: false })
+  @ApiQuery({ name: 'sortBy', required: false })
+  @ApiQuery({ name: 'order', required: false, enum: ['asc', 'desc'] })
   findPagination(
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page = 1,
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit = 10,
@@ -43,9 +45,14 @@ export class SettlementsController {
     @Query('driverId') driverId?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('order') order?: string,
   ) {
     limit = limit > 100 ? 100 : limit;
-    return this.settlementsService.paginate({ page, limit }, { status, driverId, from, to });
+    return this.settlementsService.paginate(
+      { page, limit },
+      { status, driverId, from, to, sortBy, order },
+    );
   }
 
   @Get(':id')

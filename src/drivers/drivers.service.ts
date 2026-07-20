@@ -13,6 +13,17 @@ import { UpdateDriverDto } from './dto/update-driver.dto';
 import { DriverStatus } from 'src/common/enums/driverStatus.enum';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
 import { paginateAndSearch } from 'src/common/utils/paginate-and-search.util';
+import { resolveSort } from 'src/common/utils/resolve-sort.util';
+
+// Columnas ordenables (clave del front → columna/alias real).
+const DRIVER_SORTABLE: Record<string, string> = {
+  'employee.documentId': 'employee.documentId',
+  licenseNumber: 'licenseNumber',
+  licenseExpiry: 'licenseExpiry',
+  'employee.phone': 'employee.phone',
+  status: 'status',
+  createdAt: 'createdAt',
+};
 
 @Injectable()
 export class DriversService {
@@ -64,7 +75,13 @@ export class DriversService {
     options: IPaginationOptions,
     search?: string,
     status?: DriverStatus,
+    sortBy?: string,
+    order?: string,
   ): Promise<Pagination<Driver>> {
+    const sort = resolveSort(sortBy, order, DRIVER_SORTABLE, {
+      orderBy: 'employee.lastName',
+      order: 'ASC',
+    });
     return paginateAndSearch<Driver>(this.driversRepository, {
       page: Number(options.page),
       limit: Number(options.limit),
@@ -76,8 +93,8 @@ export class DriversService {
         'employee.documentId',
         'licenseNumber',
       ],
-      orderBy: 'employee.lastName',
-      order: 'ASC',
+      orderBy: sort.orderBy,
+      order: sort.order,
       relations: ['employee', 'employee.user'],
       baseWhere: {
         ...(status && { status }),

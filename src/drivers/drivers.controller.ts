@@ -45,14 +45,24 @@ export class DriversController {
   @Auth(Role.ADMIN, Role.DISPATCHER, Role.MANAGER, Role.HR)
   @ApiQuery({ name: 'search', required: false })
   @ApiQuery({ name: 'status', required: false, enum: DriverStatus })
+  @ApiQuery({ name: 'sortBy', required: false })
+  @ApiQuery({ name: 'order', required: false, enum: ['asc', 'desc'] })
   findPagination(
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page = 1,
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit = 10,
     @Query('search') search?: string,
     @Query('status') status?: DriverStatus,
+    @Query('sortBy') sortBy?: string,
+    @Query('order') order?: string,
   ) {
     limit = limit > 100 ? 100 : limit;
-    return this.driversService.paginate({ page, limit }, search, status);
+    return this.driversService.paginate(
+      { page, limit },
+      search,
+      status,
+      sortBy,
+      order,
+    );
   }
 
   @Get(':id')
