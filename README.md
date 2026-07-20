@@ -31,7 +31,7 @@ dashboard, indicadores y liquidaciones automáticas).
 
 | # | Módulo | Descripción |
 |---|--------|-------------|
-| 1 | **Bitácora Digital del Viaje** | Combustible, peajes, gastos, adelantos, reparaciones, multas, viáticos, km, fotos de comprobantes, observaciones |
+| 1 | **Bitácora Digital del Viaje** | Peajes, gastos, adelantos, reparaciones, multas, viáticos, km, fotos de comprobantes, observaciones (el *gasto* de combustible se registra acá; el *detalle técnico* con rendimiento vive en el módulo 11) |
 | 2 | **Centro de Incidentes** | Rotura, accidente, falta de dinero, retraso, problema de carga/cliente, emergencia — con foto/GPS/audio/video y estados |
 | 3 | **Alertas Inteligentes** | Prioriza 🔴 accidente / 🟠 camión detenido / 🟡 exceso de gasto / 🟢 documentación |
 | 4 | **App del Chofer** | Experiencia móvil (PWA + Capacitor) que agrupa viajes, bitácora, incidentes, checklist, mensajes, documentos y firma |
@@ -41,6 +41,8 @@ dashboard, indicadores y liquidaciones automáticas).
 | 8 | **Centro Documental** | Seguro, VTV, licencias, carnet, habilitaciones, remitos, cartas de porte — con vencimientos automáticos |
 | 9 | **Indicadores** | Gasto por km/camión/chofer, resolución de incidentes, roturas, horas detenidas, rendimiento, disponibilidad |
 | 10 | **RRHH (Personal)** | Legajos del personal, asignación chofer↔camión y permisos/habilitaciones con vencimiento (carnet, carga peligrosa, psicofísico, LiNTI…) |
+| 11 | **Combustible** | Registro dedicado de cargas (litros, precio/litro, moneda, estación, odómetro, tanque lleno) con cálculo de rendimiento l/100km, GPS, reporte y export a Excel, y carga offline desde la app del chofer |
+| 12 | **OEA (Inspección)** | Planilla de inspección OEA (Operador Económico Autorizado): datos de transporte y carga, precintos aduaneros/seguridad, ítems de checklist, resultado, firma digital + GPS, vínculo opcional con el viaje y sincronización offline |
 
 ---
 
@@ -93,6 +95,11 @@ ejecutarlas en sesiones separadas:
 | 8 | Dashboard Gerencial | ✅ |
 | 9 | Indicadores (+ export Excel) | ✅ |
 | 10 | PWA + Mensajería + Offline-first + Push (scaffold) | ✅ |
+| +  | Combustible (módulo dedicado: rendimiento l/100km, reporte + export Excel) | ✅ |
+| +  | OEA (planilla de inspección: precintos, firma digital + GPS, sync offline) | ✅ |
+
+> Las filas marcadas con **+** son módulos incorporados después de las 10 fases
+> originales del plan.
 
 👉 Detalle y prompts copiables: [`docs/01-PROMPTS-POR-FASE.md`](./docs/01-PROMPTS-POR-FASE.md)
 

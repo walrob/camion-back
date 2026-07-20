@@ -20,6 +20,17 @@ import { EmploymentStatus } from 'src/common/enums/employmentStatus.enum';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
 import { UsersService } from 'src/users/users.service';
 import { paginateAndSearch } from 'src/common/utils/paginate-and-search.util';
+import { resolveSort } from 'src/common/utils/resolve-sort.util';
+
+// Columnas ordenables (clave del front → columna real).
+const EMPLOYEE_SORTABLE: Record<string, string> = {
+  lastName: 'lastName',
+  firstName: 'firstName',
+  documentId: 'documentId',
+  position: 'position',
+  employmentStatus: 'employmentStatus',
+  createdAt: 'createdAt',
+};
 
 @Injectable()
 export class EmployeesService {
@@ -89,6 +100,8 @@ export class EmployeesService {
     position?: EmployeePosition,
     employmentStatus?: EmploymentStatus,
     withoutDriver?: boolean,
+    sortBy?: string,
+    order?: string,
   ): Promise<Pagination<Employee>> {
     // Para el selector del alta de chofer: excluir empleados que ya tienen Driver.
     if (withoutDriver) {
@@ -100,13 +113,17 @@ export class EmployeesService {
       );
     }
 
+    const sort = resolveSort(sortBy, order, EMPLOYEE_SORTABLE, {
+      orderBy: 'lastName',
+      order: 'ASC',
+    });
     return paginateAndSearch<Employee>(this.employeesRepository, {
       page: Number(options.page),
       limit: Number(options.limit),
       search,
       searchFields: ['firstName', 'lastName', 'documentId', 'phone'],
-      orderBy: 'lastName',
-      order: 'ASC',
+      orderBy: sort.orderBy,
+      order: sort.order,
       baseWhere: {
         ...(position && { position }),
         ...(employmentStatus && { employmentStatus }),

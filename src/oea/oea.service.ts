@@ -22,6 +22,16 @@ import { Role } from 'src/common/enums/role.enum';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
 import { DriversService } from 'src/drivers/drivers.service';
 import { paginateAndSearch } from 'src/common/utils/paginate-and-search.util';
+import { resolveSort } from 'src/common/utils/resolve-sort.util';
+
+// Columnas ordenables (clave del front → columna/alias real).
+const OEA_SORTABLE: Record<string, string> = {
+  inspectedAt: 'inspectedAt',
+  'truck.plate': 'truck.plate',
+  tripNumber: 'tripNumber',
+  result: 'result',
+  createdAt: 'createdAt',
+};
 
 @Injectable()
 export class OeaService {
@@ -75,12 +85,16 @@ export class OeaService {
     options: IPaginationOptions,
     filter: OeaFilterDto,
   ): Promise<Pagination<OeaInspection>> {
+    const sort = resolveSort(filter.sortBy, filter.order, OEA_SORTABLE, {
+      orderBy: 'inspectedAt',
+      order: 'DESC',
+    });
     return paginateAndSearch<OeaInspection>(this.inspectionsRepository, {
       page: Number(options.page),
       limit: Number(options.limit),
       searchFields: [],
-      orderBy: 'inspectedAt',
-      order: 'DESC',
+      orderBy: sort.orderBy,
+      order: sort.order,
       dateField: 'inspectedAt',
       from: filter.from,
       to: filter.to,

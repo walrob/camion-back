@@ -21,4 +21,12 @@ export class OeaFilterDto {
   @IsString()
   @IsOptional()
   to?: string;
+
+  @IsString()
+  @IsOptional()
+  sortBy?: string;
+
+  @IsString()
+  @IsOptional()
+  order?: string;
 }
