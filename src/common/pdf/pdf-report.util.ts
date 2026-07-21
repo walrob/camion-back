@@ -361,13 +361,14 @@ export class PdfReport {
           ? COLOR.warn
           : COLOR.muted;
     const text = sanitize(badge.text).toUpperCase();
-    doc.font(FONT.bold).fontSize(7.5);
-    const w = doc.widthOfString(text) + 14;
+    doc.font(FONT.bold).fontSize(6.5);
+    const h = 11;
+    const w = doc.widthOfString(text) + 11;
     const x = boxX + boxW - w;
     const y = doc.y + 3;
-    doc.roundedRect(x, y, w, 13, 6.5).lineWidth(0.8).strokeColor(tone).stroke();
-    doc.fillColor(tone).text(text, x, y + 3.5, { width: w, align: 'center' });
-    doc.y = y + 15;
+    doc.roundedRect(x, y, w, h, h / 2).lineWidth(0.7).strokeColor(tone).stroke();
+    doc.fillColor(tone).text(text, x, y + 3, { width: w, align: 'center' });
+    doc.y = y + h + 2;
   }
 
   private drawFooters(): void {
