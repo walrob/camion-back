@@ -92,7 +92,15 @@ export class OeaService {
     return paginateAndSearch<OeaInspection>(this.inspectionsRepository, {
       page: Number(options.page),
       limit: Number(options.limit),
-      searchFields: [],
+      search: filter.search,
+      // Alias del query builder: las relaciones anidadas reemplazan el punto por
+      // guión bajo ('driver.employee' → 'driver_employee').
+      searchFields: [
+        'truck.plate',
+        'driver_employee.firstName',
+        'driver_employee.lastName',
+        'tripNumber',
+      ],
       orderBy: sort.orderBy,
       order: sort.order,
       dateField: 'inspectedAt',

@@ -32,6 +32,11 @@ export class SettlementsController {
 
   @Get()
   @Auth(Role.ADMIN, Role.MANAGER, Role.AUDITOR)
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    description: 'Código del viaje o nombre/apellido del chofer.',
+  })
   @ApiQuery({ name: 'status', required: false, enum: SettlementStatus })
   @ApiQuery({ name: 'driverId', required: false })
   @ApiQuery({ name: 'from', required: false })
@@ -41,6 +46,7 @@ export class SettlementsController {
   findPagination(
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page = 1,
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit = 10,
+    @Query('search') search?: string,
     @Query('status') status?: SettlementStatus,
     @Query('driverId') driverId?: string,
     @Query('from') from?: string,
@@ -51,8 +57,18 @@ export class SettlementsController {
     limit = limit > 100 ? 100 : limit;
     return this.settlementsService.paginate(
       { page, limit },
-      { status, driverId, from, to, sortBy, order },
+      { search, status, driverId, from, to, sortBy, order },
     );
+  }
+
+  /**
+   * Viajes que se pueden rendir: finalizados y sin liquidación. Va declarada
+   * antes de `:id` para que Nest no la tome como un id.
+   */
+  @Get('pending-trips')
+  @Auth(Role.ADMIN, Role.MANAGER, Role.AUDITOR)
+  pendingTrips() {
+    return this.settlementsService.pendingTrips();
   }
 
   @Get(':id')

@@ -1,6 +1,7 @@
 import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Settlement } from './entities/settlement.entity';
+import { Trip } from 'src/trips/entities/trip.entity';
 import { SettlementsService } from './settlements.service';
 import { SettlementsController } from './settlements.controller';
 import { AuthModule } from 'src/auth/auth.module';
@@ -10,7 +11,7 @@ import { StorageModule } from 'src/common/storage/storage.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Settlement]),
+    TypeOrmModule.forFeature([Settlement, Trip]),
     forwardRef(() => AuthModule),
     TripsModule,
     TripLogModule,

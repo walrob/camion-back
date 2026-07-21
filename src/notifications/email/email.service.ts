@@ -64,7 +64,15 @@ export class EmailService {
           </tr>
           <tr style="background:#f5f8ff;">
             <td style="padding: 8px; color:#555;">Total</td>
-            <td style="padding: 8px; font-weight:bold;">$${Number(data.totalAmount).toFixed(2)}</td>
+            <td style="padding: 8px; font-weight:bold;">${new Intl.NumberFormat(
+              'es-AR',
+              {
+                style: 'currency',
+                currency: 'ARS',
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              },
+            ).format(Number(data.totalAmount) || 0)}</td>
           </tr>
           <tr>
             <td style="padding: 8px; color:#555;">Validez</td>
