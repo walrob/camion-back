@@ -2,6 +2,11 @@ import { IsEnum, IsOptional, IsString } from 'class-validator';
 import { OeaResult } from 'src/common/enums/oea.enum';
 
 export class OeaFilterDto {
+  /** Texto libre: patente, chofer o número de viaje. */
+  @IsString()
+  @IsOptional()
+  search?: string;
+
   @IsString()
   @IsOptional()
   truckId?: string;
