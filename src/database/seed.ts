@@ -109,6 +109,8 @@ const round2 = (n: number): number => Math.round(n * 100) / 100;
 const pick = <T>(arr: T[], i: number): T => arr[i % arr.length];
 
 const PASSWORD = 'Fleet1234!';
+/** Contraseña simple para las cuentas demo (fácil de compartir con clientes). */
+const DEMO_PASSWORD = 'demo1234';
 
 async function run() {
   const dataSource = new DataSource({
@@ -215,15 +217,20 @@ async function run() {
     phone: string;
     email: string;
     hireDays: number;
+    isDemo?: boolean;
+    password?: string;
   }): Promise<Employee> => {
     let user = await userRepo.findOne({ where: { email: data.email } });
     if (!user) {
       user = await userRepo.save({
         email: data.email,
         name: `${data.firstName} ${data.lastName}`,
-        password: passwordHash,
+        password: data.password
+          ? await bcryptjs.hash(data.password, 10)
+          : passwordHash,
         phone: data.phone,
         role: data.role,
+        isDemo: data.isDemo ?? false,
       });
     }
     return employeeRepo.save({
@@ -639,6 +646,134 @@ async function run() {
     { level: AlertLevel.RED, sourceType: AlertSourceType.TRUCK_IDLE, title: 'Camión detenido', message: 'El camión AH789IJ figura detenido sin actividad.', status: AlertStatus.NEW, targetRoles: [Role.DISPATCHER] },
   ]);
 
+  // ───────────────────── Usuarios DEMO (solo lectura) ─────────────────────
+  // Cuentas para mostrar el sistema a clientes: ven todo y descargan PDFs, pero el
+  // DemoReadOnlyGuard les bloquea cualquier escritura (User.isDemo = true).
+
+  // Demo admin: recorre todo el backoffice con los datos ya sembrados.
+  await createEmployee({
+    firstName: 'Demo',
+    lastName: 'Admin',
+    documentId: '99000001',
+    position: EmployeePosition.ADMIN,
+    role: Role.ADMIN,
+    phone: '+54 11 4000-9001',
+    email: 'demo.admin@fleetlog.com',
+    hireDays: -365,
+    isDemo: true,
+    password: DEMO_PASSWORD,
+  });
+
+  // Demo chofer: Employee + User(demo) + Driver, con asignación, viaje en curso y
+  // viaje finalizado (bitácora + liquidación) para que la app del chofer no salga vacía.
+  const demoEmp = await createEmployee({
+    firstName: 'Demo',
+    lastName: 'Chofer',
+    documentId: '99000002',
+    position: EmployeePosition.DRIVER,
+    role: Role.DRIVER,
+    phone: '+54 11 6000-9002',
+    email: 'demo.chofer@fleetlog.com',
+    hireDays: -300,
+    isDemo: true,
+    password: DEMO_PASSWORD,
+  });
+  const demoTruck = trucks[7]; // AI890JK
+  const demoDriver = await driverRepo.save({
+    employeeId: demoEmp.id,
+    licenseNumber: 'B-99000002',
+    licenseType: 'E1',
+    licenseExpiry: dateStr(200),
+    status: DriverStatus.ON_TRIP,
+  });
+  await certRepo.save({
+    employeeId: demoEmp.id,
+    type: CertificationType.PROFESSIONAL_LICENSE,
+    class: 'E1',
+    number: `LNC-${demoEmp.documentId}`,
+    issuedBy: 'CNRT',
+    issueDate: dateStr(-300),
+    expiryDate: dateStr(200),
+    status: CertificationStatus.VALID,
+  });
+  await assignRepo.save({
+    employeeId: demoEmp.id,
+    truckId: demoTruck.id,
+    assignedAt: at(-100),
+    isPrimary: true,
+    notes: 'Asignación demo',
+  });
+
+  // Viaje en curso (con checklist aprobado).
+  const demoInProgress = await tripRepo.save({
+    code: 'VJ-DEMO1',
+    truckId: demoTruck.id,
+    trailerId: trailers[0].id,
+    driverId: demoDriver.id,
+    origin: 'Buenos Aires',
+    destination: 'Rosario',
+    cargoDescription: 'Carga general (demo)',
+    plannedStartAt: at(-1, 6),
+    plannedEndAt: at(0, 20),
+    startedAt: at(-1, 7),
+    startOdometerKm: demoTruck.currentOdometerKm,
+    status: TripStatus.IN_PROGRESS,
+  });
+  const demoChecklist = await checklistRepo.save({
+    tripId: demoInProgress.id,
+    truckId: demoTruck.id,
+    driverId: demoDriver.id,
+    result: ChecklistResult.APPROVED,
+    signedAt: at(-1, 7),
+  });
+  await checklistItemRepo.save(
+    DEFAULT_CHECKLIST_ITEMS.map((it) => ({
+      checklistId: demoChecklist.id,
+      key: it.key,
+      label: it.label,
+      status: ChecklistItemStatus.OK,
+    })),
+  );
+
+  // Viaje finalizado con bitácora y liquidación (para ver/descargar el PDF).
+  const demoStartOdo = demoTruck.currentOdometerKm - 800;
+  const demoFinished = await tripRepo.save({
+    code: 'VJ-DEMO0',
+    truckId: demoTruck.id,
+    trailerId: trailers[0].id,
+    driverId: demoDriver.id,
+    origin: 'Córdoba',
+    destination: 'Buenos Aires',
+    cargoDescription: 'Alimentos secos (demo)',
+    plannedStartAt: at(-6, 6),
+    plannedEndAt: at(-5, 20),
+    startedAt: at(-6, 6),
+    finishedAt: at(-5, 20),
+    startOdometerKm: demoStartOdo,
+    endOdometerKm: demoStartOdo + 700,
+    distanceKm: 700,
+    status: TripStatus.FINISHED,
+  });
+  await logRepo.save([
+    { tripId: demoFinished.id, type: TripLogType.FUEL, amount: 220500, liters: 245, odometerKm: demoStartOdo + 350, occurredAt: at(-6, 12), notes: 'Carga en ruta (demo)' },
+    { tripId: demoFinished.id, type: TripLogType.TOLL, amount: 12000, occurredAt: at(-6, 10), notes: 'Peajes (demo)' },
+    { tripId: demoFinished.id, type: TripLogType.PER_DIEM, amount: 25000, occurredAt: at(-6, 8), notes: 'Viáticos (demo)' },
+    { tripId: demoFinished.id, type: TripLogType.CASH_ADVANCE, amount: 40000, occurredAt: at(-6, 7), notes: 'Adelanto (demo)' },
+  ]);
+  await settlementRepo.save({
+    tripId: demoFinished.id,
+    totalsByType: {
+      [TripLogType.FUEL]: 220500,
+      [TripLogType.TOLL]: 12000,
+      [TripLogType.PER_DIEM]: 25000,
+      [TripLogType.CASH_ADVANCE]: 40000,
+    },
+    totalExpenses: round2(220500 + 12000 + 25000),
+    totalAdvances: 40000,
+    netToSettle: round2(220500 + 12000 + 25000 - 40000),
+    status: SettlementStatus.DRAFT,
+  });
+
   // ───────────────────────── Resumen ─────────────────────────
   const counts = {
     flotas: await fleetRepo.count(),
@@ -664,7 +799,10 @@ async function run() {
       '   admin@fleetlog.com (admin), laura.gomez@fleetlog.com (manager),\n' +
       '   diego.fernandez@fleetlog.com (dispatcher), sofia.ramirez@fleetlog.com (hr),\n' +
       '   jorge.sosa@fleetlog.com (maintenance), marta.rios@fleetlog.com (auditor),\n' +
-      '   choferes: carlos.pereyra@fleetlog.com … pablo.cabrera@fleetlog.com (driver)',
+      '   choferes: carlos.pereyra@fleetlog.com … pablo.cabrera@fleetlog.com (driver)\n' +
+      `\n👀 Cuentas DEMO (solo lectura, para mostrar a clientes) — contraseña: ${DEMO_PASSWORD}\n` +
+      '   demo.admin@fleetlog.com (admin) y demo.chofer@fleetlog.com (driver)\n' +
+      '   Pueden ver todo y descargar PDFs; no pueden modificar datos.',
   );
 
   await dataSource.destroy();

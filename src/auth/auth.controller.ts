@@ -5,15 +5,13 @@ import {
   HttpStatus,
   Post,
   Request,
-  UseGuards,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { PasswordDto } from './dto/password.dto';
-import { AuthGuard } from './guard/auth.guard';
 import { LoginDto } from './dto/login.dto';
-import { RolesGuard } from './guard/roles.guard';
-import { Roles } from '../common/decorators/roles.decorator';
+import { Auth } from './decorators/auth.decorator';
+import { AllowDemo } from './decorators/allow-demo.decorator';
 import { Role } from '../common/enums/role.enum';
 import { CreateOperatorDto } from './dto/create-operator.dto';
 
@@ -29,8 +27,7 @@ export class AuthController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(AuthGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @Auth(Role.ADMIN)
   @Post('create-user')
   createUser(@Body() createOperatorDto: CreateOperatorDto, @Request() req) {
     return this.authService.createUser(createOperatorDto, req.user);
@@ -41,7 +38,9 @@ export class AuthController {
     return this.authService.changePassword(passwordDto);
   }
 
-  @UseGuards(AuthGuard)
+  // Preferencia visual personal: no altera datos de negocio, el demo puede usarla.
+  @Auth()
+  @AllowDemo()
   @Post('change-dark')
   changeDarkUser(@Request() req, @Body() body: { dark: boolean }) {
     return this.authService.changeDarkUser(req.user.id, body.dark);

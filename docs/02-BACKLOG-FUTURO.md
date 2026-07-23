@@ -73,6 +73,22 @@ resultado conforme/no conforme, GPS e idempotencia offline. Pendientes:
       con un toggle "crear acceso a la app" que muestre email + contraseña; el rol
       se deriva del puesto (mostrar el rol resultante), con opción de override.
       Agregar el puesto **Gerente** (manager) al selector de puestos.
+- [x] **Cuentas demo de solo lectura** (mostrar el sistema a clientes). **Backend:**
+      flag `User.isDemo` → va en el JWT; `DemoReadOnlyGuard` (encadenado en `@Auth()`)
+      bloquea toda escritura HTTP (POST/PATCH/PUT/DELETE) para el demo y deja pasar los
+      GET (se ven datos y se descargan PDFs, que se generan on-demand vía GET). Escape
+      hatch `@AllowDemo()` por endpoint. Seed crea `demo.admin@fleetlog.com` (admin) y
+      `demo.chofer@fleetlog.com` (driver, con asignación + viaje en curso + viaje
+      finalizado con liquidación); contraseña `demo1234`. **Front (front-camion):**
+      `User.isDemo` + getter `authStore.isDemo`; interceptor axios muestra un toast
+      "Modo demo: solo lectura" ante cualquier 403 de la cuenta demo; cinta fija en el
+      layout admin y chip "Demo" en el hero del chofer; botones de acceso rápido
+      Backoffice/Chofer en el login. Ambos proyectos compilan.
+      **Gaps conocidos (opcionales):** (1) el chat por WebSocket (`/messages`) no pasa
+      por el guard HTTP — si molesta, bloquear la emisión del demo en el gateway o el
+      front; (2) los botones de escritura siguen visibles (se optó por el toast global
+      en vez de ocultarlos en cada pantalla); se pueden esconder con `authStore.isDemo`
+      donde convenga.
 - [ ] (agregar aquí nuevas ideas a medida que aparezcan)
 
 ---

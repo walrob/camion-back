@@ -55,6 +55,14 @@ export class User {
   @Column({ default: false })
   blocked: Boolean;
 
+  /**
+   * Cuenta de demostración de solo lectura (para mostrar el sistema a clientes).
+   * Puede ver todo y descargar PDFs, pero no puede modificar datos: el
+   * `DemoReadOnlyGuard` bloquea toda escritura (POST/PATCH/PUT/DELETE).
+   */
+  @Column({ default: false })
+  isDemo: boolean;
+
   @Column({ type: 'timestamp', nullable: true })
   lastConnection: Date;
 }

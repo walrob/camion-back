@@ -35,7 +35,19 @@ export class UsersService {
   findOneByEmailWithPassword(email: string) {
     return this.usersRepository.findOne({
       where: { email },
-      select: ['id', 'email', 'name', 'password', 'createdAt', 'role', 'blocked', 'profileImage'],
+      // `isDemo` es imprescindible: viaja en el JWT y es lo que lee el DemoReadOnlyGuard.
+      select: [
+        'id',
+        'email',
+        'name',
+        'password',
+        'createdAt',
+        'role',
+        'blocked',
+        'profileImage',
+        'isTemplateDark',
+        'isDemo',
+      ],
     });
   }
 
