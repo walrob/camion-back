@@ -29,12 +29,36 @@ export class MessagesService {
     return message;
   }
 
+  /**
+   * Base de consulta con el interlocutor resuelto. Selecciona solo id/name/role
+   * de cada usuario: alcanza para pintar la conversación en el front y evita
+   * exponer email/teléfono//perfil de gente con la que solo se chatea.
+   *
+   * Sin esto el front tendría que traerse el padrón entero de usuarios para
+   * traducir `fromUserId`/`toUserId` a nombres.
+   */
+  private withParticipants() {
+    return this.messagesRepository
+      .createQueryBuilder('m')
+      .leftJoin('m.fromUser', 'fromUser')
+      .addSelect(['fromUser.id', 'fromUser.name', 'fromUser.role'])
+      .leftJoin('m.toUser', 'toUser')
+      .addSelect(['toUser.id', 'toUser.name', 'toUser.role']);
+  }
+
   /** Hilo del chofer: todos los mensajes en los que participa. */
   threadForUser(userId: string): Promise<Message[]> {
-    return this.messagesRepository.find({
-      where: [{ fromUserId: userId }, { toUserId: userId }],
-      order: { createdAt: 'ASC' },
-    });
+    return this.withParticipants()
+      .where(
+        new Brackets((qb) => {
+          qb.where('m.fromUserId = :userId', { userId }).orWhere(
+            'm.toUserId = :userId',
+            { userId },
+          );
+        }),
+      )
+      .orderBy('m.createdAt', 'ASC')
+      .getMany();
   }
 
   /** Conversación entre el usuario actual (staff) y un chofer. */
@@ -43,8 +67,7 @@ export class MessagesService {
     otherId: string,
     myRole: string,
   ): Promise<Message[]> {
-    return this.messagesRepository
-      .createQueryBuilder('m')
+    return this.withParticipants()
       .where(
         new Brackets((qb) => {
           qb.where('m.fromUserId = :meId AND m.toUserId = :otherId', {
@@ -66,11 +89,17 @@ export class MessagesService {
    * conversación que inicié aunque el chofer todavía no haya respondido.
    */
   inbox(meId: string, myRole: string): Promise<Message[]> {
-    return this.messagesRepository.find({
-      where: [{ toUserId: meId }, { toRole: myRole }, { fromUserId: meId }],
-      order: { createdAt: 'DESC' },
-      take: 100,
-    });
+    return this.withParticipants()
+      .where(
+        new Brackets((qb) => {
+          qb.where('m.toUserId = :meId', { meId })
+            .orWhere('m.toRole = :myRole', { myRole })
+            .orWhere('m.fromUserId = :meId', { meId });
+        }),
+      )
+      .orderBy('m.createdAt', 'DESC')
+      .take(100)
+      .getMany();
   }
 
   async markRead(id: string): Promise<Message> {
