@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   forwardRef,
   Inject,
   Injectable,
@@ -14,6 +15,7 @@ import { PasswordDto } from './dto/password.dto';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
 import { LoginDto } from './dto/login.dto';
 import { CreateOperatorDto } from './dto/create-operator.dto';
+import { DEMO_READONLY_MESSAGE } from './guard/demo-readonly.guard';
 
 @Injectable()
 export class AuthService {
@@ -33,7 +35,7 @@ export class AuthService {
 
     await this.usersService.update(user.id, { lastConnection: new Date() } as any);
 
-    const payload = { id: user.id, role: user.role };
+    const payload = { id: user.id, role: user.role, isDemo: user.isDemo };
     const token = await this.jwtService.signAsync(payload);
     const decoded = this.jwtService.decode(token) as { exp: number };
 
@@ -47,6 +49,7 @@ export class AuthService {
         role: user.role,
         avatar: user.profileImage,
         isTemplateDark: user.isTemplateDark,
+        isDemo: user.isDemo,
       },
     };
   }
@@ -54,6 +57,9 @@ export class AuthService {
   async changePassword({ email, passwordCurrent, passwordNew }: PasswordDto) {
     const userBd = await this.usersService.findOneByEmailWithPassword(email);
     if (!userBd) throw new BadRequestException('No existe usuario.');
+    // El endpoint es público y las credenciales demo se comparten: nadie puede
+    // cambiarle la contraseña a una cuenta demo y dejarla inutilizable.
+    if (userBd.isDemo) throw new ForbiddenException(DEMO_READONLY_MESSAGE);
 
     const isPasswordValid = await bcryptjs.compare(passwordCurrent, userBd.password);
     if (!isPasswordValid) throw new BadRequestException('Contraseña inválida.');
@@ -78,13 +84,16 @@ export class AuthService {
       const payload = this.jwtService.verify(token);
       const user = await this.usersService.findOneById(payload.sub);
       if (!user) throw new BadRequestException('Usuario no encontrado');
+      if (user.isDemo) throw new ForbiddenException(DEMO_READONLY_MESSAGE);
 
       await this.usersService.update(user.id, {
         password: await bcryptjs.hash(passwordNew, 10),
       } as any);
 
       return { message: 'Contraseña actualizada correctamente' };
-    } catch {
+    } catch (error) {
+      // No enmascarar el rechazo de las cuentas demo como token inválido.
+      if (error instanceof ForbiddenException) throw error;
       throw new BadRequestException('Token inválido o expirado');
     }
   }
