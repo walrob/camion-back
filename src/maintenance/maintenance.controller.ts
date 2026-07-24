@@ -6,7 +6,10 @@ import {
   Param,
   Patch,
   Post,
+  Res,
+  StreamableFile,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { MaintenanceService } from './maintenance.service';
 import { CreatePlanDto } from './dto/create-plan.dto';
@@ -76,6 +79,20 @@ export class MaintenanceController {
   @Auth(Role.ADMIN, Role.MAINTENANCE, Role.MANAGER)
   ordersByTruck(@Param('truckId') truckId: string) {
     return this.maintenanceService.ordersByTruck(truckId);
+  }
+
+  @Get('orders/:id/pdf')
+  @Auth(Role.ADMIN, Role.MAINTENANCE, Role.MANAGER)
+  async orderPdf(
+    @Param('id') id: string,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    const buffer = await this.maintenanceService.buildOrderPdf(id);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': 'inline; filename="orden-de-trabajo.pdf"',
+    });
+    return new StreamableFile(buffer);
   }
 
   @Patch('orders/:id')

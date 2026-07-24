@@ -8,6 +8,8 @@ import {
   Repository,
 } from 'typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import * as XLSX from 'xlsx';
+import { dateOnly } from 'src/common/pdf/pdf-report.util';
 import { Document } from './entities/document.entity';
 import { Truck } from 'src/fleet/entities/truck.entity';
 import { Trailer } from 'src/fleet/entities/trailer.entity';
@@ -25,6 +27,29 @@ import { AlertsService } from 'src/alerts/alerts.service';
 import { DriversService } from 'src/drivers/drivers.service';
 
 const WARNING_DAYS = 30;
+
+// Etiquetas en español para la exportación (idénticas a las del front).
+const OWNER_TYPE_LABELS: Record<string, string> = {
+  truck: 'Camión',
+  trailer: 'Acoplado',
+  driver: 'Chofer',
+  company: 'Empresa',
+};
+const CATEGORY_LABELS: Record<string, string> = {
+  insurance: 'Seguro',
+  vtv: 'VTV',
+  license: 'Licencia',
+  id_card: 'Carnet / DNI',
+  permit: 'Habilitación',
+  delivery_note: 'Remito',
+  waybill: 'Carta de porte',
+  other: 'Otro',
+};
+const DOC_STATUS_LABELS: Record<string, string> = {
+  valid: 'Vigente',
+  expiring: 'Por vencer',
+  expired: 'Vencido',
+};
 
 export interface DocumentOwner {
   type: DocumentOwnerType;
@@ -135,6 +160,29 @@ export class DocumentsService {
       trailerMap,
       driverMap,
     }) }));
+  }
+
+  /** Exporta a Excel los documentos por vencer / vencidos. */
+  async exportExpiringXlsx(days = WARNING_DAYS): Promise<Buffer> {
+    const docs = await this.expiring(days);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.json_to_sheet(
+        docs.map((d) => ({
+          Entidad: OWNER_TYPE_LABELS[d.ownerType] ?? d.ownerType,
+          Dueño: d.owner?.label ?? '-',
+          Detalle: d.owner?.sublabel ?? '',
+          Categoria: CATEGORY_LABELS[d.category] ?? d.category,
+          Numero: d.number ?? '',
+          Emision: dateOnly(d.issueDate),
+          Vencimiento: dateOnly(d.expiryDate),
+          Estado: DOC_STATUS_LABELS[d.status] ?? d.status,
+        })),
+      ),
+      'Vencimientos',
+    );
+    return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
   }
 
   private findByIdsSafe<T extends ObjectLiteral>(

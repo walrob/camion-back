@@ -9,7 +9,10 @@ import {
   Patch,
   Post,
   Query,
+  Res,
+  StreamableFile,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { TripsService } from './trips.service';
 import { CreateTripDto } from './dto/create-trip.dto';
@@ -71,6 +74,43 @@ export class TripsController {
     );
   }
 
+  @Get('export')
+  @Auth(Role.ADMIN, Role.DISPATCHER, Role.MANAGER, Role.AUDITOR)
+  @ApiQuery({ name: 'search', required: false })
+  @ApiQuery({ name: 'status', required: false, enum: TripStatus })
+  @ApiQuery({ name: 'truckId', required: false })
+  @ApiQuery({ name: 'driverId', required: false })
+  @ApiQuery({ name: 'from', required: false })
+  @ApiQuery({ name: 'to', required: false })
+  async export(
+    @Res({ passthrough: true }) res: Response,
+    @Query('search') search?: string,
+    @Query('status') status?: TripStatus,
+    @Query('truckId') truckId?: string,
+    @Query('driverId') driverId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('order') order?: string,
+  ): Promise<StreamableFile> {
+    const buffer = await this.tripsService.exportXlsx({
+      search,
+      status,
+      truckId,
+      driverId,
+      from,
+      to,
+      sortBy,
+      order,
+    });
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': 'attachment; filename="viajes.xlsx"',
+    });
+    return new StreamableFile(buffer);
+  }
+
   @Get('me')
   @Auth(Role.DRIVER)
   @ApiQuery({ name: 'status', required: false, enum: TripStatus })
@@ -94,6 +134,20 @@ export class TripsController {
   @Auth(Role.ADMIN, Role.DISPATCHER, Role.MANAGER, Role.AUDITOR)
   findOne(@Param('id') id: string) {
     return this.tripsService.findOne(id);
+  }
+
+  @Get(':id/route-sheet')
+  @Auth(Role.ADMIN, Role.DISPATCHER, Role.MANAGER, Role.AUDITOR)
+  async routeSheet(
+    @Param('id') id: string,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    const buffer = await this.tripsService.buildRouteSheetPdf(id);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': 'inline; filename="hoja-de-ruta.pdf"',
+    });
+    return new StreamableFile(buffer);
   }
 
   @Post(':id/start')

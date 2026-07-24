@@ -9,8 +9,11 @@ import {
   Patch,
   Post,
   Query,
+  Res,
+  StreamableFile,
   UploadedFile,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { ApiBearerAuth, ApiConsumes, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { DocumentsService } from './documents.service';
 import { CreateDocumentDto } from './dto/create-document.dto';
@@ -61,6 +64,22 @@ export class DocumentsController {
   @ApiQuery({ name: 'days', required: false, type: Number })
   expiring(@Query('days', new DefaultValuePipe(30), ParseIntPipe) days = 30) {
     return this.documentsService.expiring(days);
+  }
+
+  @Get('expiring/export')
+  @Auth(Role.ADMIN, Role.MAINTENANCE, Role.DISPATCHER, Role.MANAGER)
+  @ApiQuery({ name: 'days', required: false, type: Number })
+  async exportExpiring(
+    @Res({ passthrough: true }) res: Response,
+    @Query('days', new DefaultValuePipe(30), ParseIntPipe) days = 30,
+  ): Promise<StreamableFile> {
+    const buffer = await this.documentsService.exportExpiringXlsx(days);
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': 'attachment; filename="vencimientos.xlsx"',
+    });
+    return new StreamableFile(buffer);
   }
 
   @Get('me')
