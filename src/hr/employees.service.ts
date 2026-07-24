@@ -17,8 +17,10 @@ import {
   POSITION_ROLE,
 } from 'src/common/enums/employeePosition.enum';
 import { EmploymentStatus } from 'src/common/enums/employmentStatus.enum';
+import { EmploymentMovementType } from 'src/common/enums/employmentMovement.enum';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
 import { UsersService } from 'src/users/users.service';
+import { EmploymentMovementsService } from './employment-movements.service';
 import { paginateAndSearch } from 'src/common/utils/paginate-and-search.util';
 import { resolveSort } from 'src/common/utils/resolve-sort.util';
 
@@ -38,6 +40,7 @@ export class EmployeesService {
     @InjectRepository(Employee)
     private readonly employeesRepository: Repository<Employee>,
     private readonly usersService: UsersService,
+    private readonly movementsService: EmploymentMovementsService,
   ) {}
 
   async create(
@@ -60,7 +63,22 @@ export class EmployeesService {
       userId,
       createdBy: user.id,
     });
-    return this.employeesRepository.save(employee);
+    const saved = await this.employeesRepository.save(employee);
+
+    // El ingreso abre el historial laboral: sin este asiento el legajo arranca
+    // sin trazabilidad y el estado no se puede recalcular.
+    if (dto.hireDate) {
+      await this.movementsService.create(
+        {
+          employeeId: saved.id,
+          type: EmploymentMovementType.HIRE,
+          startDate: dto.hireDate,
+          reason: 'Alta del legajo',
+        },
+        user,
+      );
+    }
+    return saved;
   }
 
   /** Crea el User de acceso con el rol derivado del puesto y devuelve su id. */
@@ -182,7 +200,12 @@ export class EmployeesService {
   async findOne(id: string): Promise<Employee> {
     const employee = await this.employeesRepository.findOne({
       where: { id },
-      relations: ['certifications', 'assignments', 'assignments.truck'],
+      relations: [
+        'certifications',
+        'assignments',
+        'assignments.truck',
+        'movements',
+      ],
     });
     if (!employee) throw new NotFoundException('Empleado no encontrado.');
     return employee;

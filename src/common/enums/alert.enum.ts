@@ -19,4 +19,6 @@ export enum AlertSourceType {
   CERTIFICATION = 'certification',
   TRUCK_IDLE = 'truck_idle',
   MAINTENANCE = 'maintenance',
+  /** Situación del legajo: licencia, suspensión o baja del empleado. */
+  EMPLOYMENT = 'employment',
 }

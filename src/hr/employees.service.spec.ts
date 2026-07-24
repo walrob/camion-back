@@ -4,7 +4,9 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { EmployeesService } from './employees.service';
 import { Employee } from './entities/employee.entity';
 import { UsersService } from 'src/users/users.service';
+import { EmploymentMovementsService } from './employment-movements.service';
 import { EmployeePosition } from 'src/common/enums/employeePosition.enum';
+import { EmploymentMovementType } from 'src/common/enums/employmentMovement.enum';
 import { Role } from 'src/common/enums/role.enum';
 
 const activeUser = { id: 'admin-1', role: 'admin' };
@@ -13,6 +15,7 @@ describe('EmployeesService.create (alta con cuenta opcional)', () => {
   let service: EmployeesService;
   let employeesRepo: { findOne: jest.Mock; create: jest.Mock; save: jest.Mock };
   let usersService: { findOneByEmail: jest.Mock; create: jest.Mock };
+  let movementsService: { create: jest.Mock };
 
   beforeEach(async () => {
     employeesRepo = {
@@ -24,12 +27,17 @@ describe('EmployeesService.create (alta con cuenta opcional)', () => {
       findOneByEmail: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue({ id: 'user-9' }),
     };
+    movementsService = { create: jest.fn().mockResolvedValue({ id: 'mov-1' }) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         EmployeesService,
         { provide: getRepositoryToken(Employee), useValue: employeesRepo },
         { provide: UsersService, useValue: usersService },
+        {
+          provide: EmploymentMovementsService,
+          useValue: movementsService,
+        },
       ],
     }).compile();
 
@@ -115,5 +123,22 @@ describe('EmployeesService.create (alta con cuenta opcional)', () => {
     const saved = await service.create({ ...base }, activeUser);
     expect(usersService.create).not.toHaveBeenCalled();
     expect(saved.userId).toBeUndefined();
+  });
+
+  it('abre el historial laboral con el movimiento de ingreso', async () => {
+    await service.create({ ...base, hireDate: '2024-03-01' }, activeUser);
+    expect(movementsService.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        employeeId: 'emp-1',
+        type: EmploymentMovementType.HIRE,
+        startDate: '2024-03-01',
+      }),
+      activeUser,
+    );
+  });
+
+  it('no genera movimiento si el alta no trae fecha de ingreso', async () => {
+    await service.create({ ...base }, activeUser);
+    expect(movementsService.create).not.toHaveBeenCalled();
   });
 });

@@ -14,6 +14,7 @@ import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { EmployeesService } from './employees.service';
 import { CertificationsService } from './certifications.service';
 import { AssignmentsService } from './assignments.service';
+import { EmploymentMovementsService } from './employment-movements.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { EmployeePosition } from 'src/common/enums/employeePosition.enum';
@@ -31,6 +32,7 @@ export class EmployeesController {
     private readonly employeesService: EmployeesService,
     private readonly certificationsService: CertificationsService,
     private readonly assignmentsService: AssignmentsService,
+    private readonly movementsService: EmploymentMovementsService,
   ) {}
 
   @Post()
@@ -88,6 +90,13 @@ export class EmployeesController {
   @Auth(Role.ADMIN, Role.HR, Role.MANAGER, Role.DISPATCHER)
   assignments(@Param('id') id: string) {
     return this.assignmentsService.historyByEmployee(id);
+  }
+
+  /** Historial laboral: ingreso, licencias, suspensiones y baja. */
+  @Get(':id/movements')
+  @Auth(Role.ADMIN, Role.HR, Role.MANAGER)
+  movements(@Param('id') id: string) {
+    return this.movementsService.listByEmployee(id);
   }
 
   @Patch(':id')

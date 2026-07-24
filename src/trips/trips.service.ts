@@ -18,9 +18,27 @@ import { DriverStatus } from 'src/common/enums/driverStatus.enum';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
 import { paginateAndSearch } from 'src/common/utils/paginate-and-search.util';
 import { resolveSort } from 'src/common/utils/resolve-sort.util';
+import { EmploymentStatus } from 'src/common/enums/employmentStatus.enum';
 import { TrucksService } from 'src/fleet/trucks.service';
 import { DriversService } from 'src/drivers/drivers.service';
 import { ChecklistsService } from 'src/checklists/checklists.service';
+import { EmploymentMovementsService } from 'src/hr/employment-movements.service';
+import { AlertsService } from 'src/alerts/alerts.service';
+
+/** Normaliza una fecha a 'YYYY-MM-DD', que es como se guardan las del legajo. */
+const toDateStr = (value: string | Date | undefined): string | undefined => {
+  if (!value) return undefined;
+  if (typeof value === 'string') return value.slice(0, 10);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
+};
+
+/** Día anterior a una fecha 'YYYY-MM-DD'. */
+const previousDay = (date: string): string => {
+  const d = new Date(`${date}T00:00:00`);
+  d.setDate(d.getDate() - 1);
+  return toDateStr(d)!;
+};
 
 // Columnas por las que se permite ordenar (clave del front → columna/alias real).
 const TRIP_SORTABLE: Record<string, string> = {
@@ -41,11 +59,21 @@ export class TripsService {
     private readonly trucksService: TrucksService,
     private readonly driversService: DriversService,
     private readonly checklistsService: ChecklistsService,
+    private readonly movementsService: EmploymentMovementsService,
+    private readonly alertsService: AlertsService,
   ) {}
 
   async create(dto: CreateTripDto, user: ActiveUserInterface): Promise<Trip> {
+    const { closeLeave, ...tripData } = dto;
+    await this.assertDriverAvailable(
+      dto.driverId,
+      dto.plannedStartAt,
+      closeLeave,
+      user,
+    );
+
     const trip = this.tripsRepository.create({
-      ...dto,
+      ...tripData,
       code: await this.generateCode(),
       createdBy: user.id,
     });
@@ -125,8 +153,107 @@ export class TripsService {
         'Solo se puede editar un viaje en estado asignado.',
       );
     }
-    Object.assign(trip, dto, { updatedBy: user.id });
+
+    const { closeLeave, ...tripData } = dto;
+    // Revalidar solo si cambia el chofer o la fecha de inicio; el resto de los
+    // campos no afecta la disponibilidad.
+    if (dto.driverId || dto.plannedStartAt) {
+      await this.assertDriverAvailable(
+        dto.driverId ?? trip.driverId,
+        dto.plannedStartAt ?? trip.plannedStartAt,
+        closeLeave,
+        user,
+      );
+    }
+
+    Object.assign(trip, tripData, { updatedBy: user.id });
     return this.tripsRepository.save(trip);
+  }
+
+  /**
+   * Un chofer no puede salir de viaje si su legajo no se lo permite en la fecha
+   * de inicio prevista.
+   *
+   * - Baja y suspensión bloquean siempre: se resuelven en RRHH, no acá.
+   * - La licencia bloquea salvo que venga `closeLeave`, que la finaliza el día
+   *   anterior al viaje. En cualquier caso queda una alerta para RRHH.
+   * - Si el viaje arranca después de que termina la licencia, se permite pero
+   *   igual se avisa, porque hoy el chofer no está disponible.
+   */
+  private async assertDriverAvailable(
+    driverId: string,
+    plannedStartAt: string | Date | undefined,
+    closeLeave: boolean | undefined,
+    user: ActiveUserInterface,
+  ): Promise<void> {
+    const driver = await this.driversService.findOne(driverId);
+    const employee = driver.employee;
+    // Legajos viejos sin historial no bloquean nada.
+    if (!employee) return;
+
+    const startDate = toDateStr(plannedStartAt) ?? toDateStr(new Date())!;
+    const name = `${employee.firstName} ${employee.lastName}`;
+    const { status, movement } = await this.movementsService.statusAt(
+      employee.id,
+      startDate,
+    );
+
+    if (status === EmploymentStatus.TERMINATED) {
+      throw new BadRequestException(
+        `${name} está dado de baja${movement ? ` desde el ${movement.startDate}` : ''}. No se le pueden asignar viajes.`,
+      );
+    }
+
+    if (status === EmploymentStatus.SUSPENDED) {
+      const until = movement?.endDate
+        ? `hasta el ${movement.endDate}`
+        : 'sin fecha de fin';
+      throw new BadRequestException(
+        `${name} está suspendido ${until}. La suspensión debe levantarse desde RRHH antes de asignarle un viaje.`,
+      );
+    }
+
+    if (status === EmploymentStatus.ON_LEAVE && movement) {
+      const until = movement.endDate
+        ? `hasta el ${movement.endDate}`
+        : 'sin fecha de fin definida';
+
+      if (!closeLeave) {
+        throw new BadRequestException(
+          `${name} está de licencia ${until}. Reprogramá el viaje para después de esa fecha o confirmá la finalización de la licencia.`,
+        );
+      }
+
+      const closeDate = previousDay(startDate);
+      if (closeDate < movement.startDate) {
+        throw new BadRequestException(
+          `La licencia de ${name} empieza el ${movement.startDate}, el mismo día del viaje o después. Si se cargó por error, eliminala desde RRHH.`,
+        );
+      }
+
+      await this.movementsService.closeAt(movement.id, closeDate, user);
+      await this.alertsService.createFromLeaveAssignment({
+        employeeId: employee.id,
+        employeeName: name,
+        leaveUntil: movement.endDate,
+        tripStart: startDate,
+        closed: true,
+      });
+      return;
+    }
+
+    // El viaje arranca después de la licencia, pero hoy sigue sin estar
+    // disponible: se permite y se avisa.
+    const current = await this.movementsService.statusAt(employee.id);
+    if (current.status === EmploymentStatus.ON_LEAVE && current.movement) {
+      await this.alertsService.createFromLeaveAssignment({
+        employeeId: employee.id,
+        employeeName: name,
+        leaveUntil: current.movement.endDate,
+        tripStart: startDate,
+        closed: false,
+      });
+    }
   }
 
   async start(

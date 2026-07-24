@@ -38,6 +38,7 @@ import { Trailer } from '../fleet/entities/trailer.entity';
 import { Employee } from '../hr/entities/employee.entity';
 import { Certification } from '../hr/entities/certification.entity';
 import { TruckAssignment } from '../hr/entities/truck-assignment.entity';
+import { EmploymentMovement } from '../hr/entities/employment-movement.entity';
 import { Driver } from '../drivers/entities/driver.entity';
 import { Trip } from '../trips/entities/trip.entity';
 import { TripLogEntry } from '../trip-log/entities/trip-log-entry.entity';
@@ -159,7 +160,7 @@ async function run() {
     database: process.env.DB_DATABASE,
     entities: [
       User, Attachment, Fleet, Truck, Trailer, Employee, Certification,
-      TruckAssignment, Driver, Trip, TripLogEntry, Settlement, Checklist,
+      TruckAssignment, EmploymentMovement, Driver, Trip, TripLogEntry, Settlement, Checklist,
       ChecklistItem, Incident, IncidentEvent, Alert, AlertRuleConfig,
       MaintenancePlan, MaintenanceOrder, Document, Message, DeviceToken,
       FuelRecord, OeaInspection, OeaInspectionItem,

@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsDateString,
   IsNotEmpty,
   IsOptional,
@@ -46,4 +47,14 @@ export class CreateTripDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  /**
+   * Confirmación explícita para asignar el viaje a un chofer que está de
+   * licencia: la finaliza el día anterior al inicio del viaje y deja registro
+   * en el legajo. Sin esto, la asignación se rechaza. No sirve para
+   * suspensiones ni bajas, que bloquean siempre.
+   */
+  @IsBoolean()
+  @IsOptional()
+  closeLeave?: boolean;
 }
