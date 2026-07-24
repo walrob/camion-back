@@ -144,6 +144,36 @@ export class AlertsService {
     });
   }
 
+  /**
+   * Se asignó un viaje a un chofer con una licencia de por medio. Si hubo que
+   * finalizarla para poder asignarlo, la alerta sube de nivel: RRHH tiene que
+   * enterarse de que operaciones le tocó el legajo.
+   */
+  async createFromLeaveAssignment(params: {
+    employeeId: string;
+    employeeName: string;
+    leaveUntil?: string | null;
+    tripStart: string;
+    closed: boolean;
+  }) {
+    const until = params.leaveUntil
+      ? `hasta el ${params.leaveUntil}`
+      : 'sin fecha de fin';
+
+    return this.createAlert({
+      level: params.closed ? AlertLevel.ORANGE : AlertLevel.YELLOW,
+      sourceType: AlertSourceType.EMPLOYMENT,
+      sourceId: params.employeeId,
+      title: params.closed
+        ? 'Licencia finalizada para asignar un viaje'
+        : 'Viaje asignado a un chofer de licencia',
+      message: params.closed
+        ? `Se finalizó la licencia de ${params.employeeName} (${until}) para asignarle un viaje que arranca el ${params.tripStart}.`
+        : `${params.employeeName} está de licencia ${until} y se le asignó un viaje que arranca el ${params.tripStart}.`,
+      targetRoles: ['admin', 'hr', 'manager', 'dispatcher'],
+    });
+  }
+
   // ───────── Cron: camión detenido ─────────
   @Cron(CronExpression.EVERY_30_MINUTES)
   async detectIdleTrucks(): Promise<void> {

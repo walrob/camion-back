@@ -14,6 +14,7 @@ import { EmploymentStatus } from 'src/common/enums/employmentStatus.enum';
 import { User } from 'src/users/entities/user.entity';
 import { Certification } from './certification.entity';
 import { TruckAssignment } from './truck-assignment.entity';
+import { EmploymentMovement } from './employment-movement.entity';
 
 @Entity('employees')
 export class Employee {
@@ -67,9 +68,14 @@ export class Employee {
   @Column({ type: 'date', nullable: true })
   hireDate: string;
 
+  /** Derivado del último movimiento de baja; `null` mientras no esté dado de baja. */
   @Column({ type: 'date', nullable: true })
-  terminationDate: string;
+  terminationDate: string | null;
 
+  /**
+   * Estado actual del legajo. Es un valor **derivado**: lo recalcula
+   * `EmploymentMovementsService` a partir de `movements`. No editarlo a mano.
+   */
   @Column({
     type: 'enum',
     enum: EmploymentStatus,
@@ -100,4 +106,8 @@ export class Employee {
 
   @OneToMany(() => TruckAssignment, (a) => a.employee)
   assignments: TruckAssignment[];
+
+  /** Historial laboral: ingreso, licencias, suspensiones, baja. */
+  @OneToMany(() => EmploymentMovement, (m) => m.employee)
+  movements: EmploymentMovement[];
 }

@@ -9,7 +9,6 @@ import {
   MinLength,
 } from 'class-validator';
 import { EmployeePosition } from 'src/common/enums/employeePosition.enum';
-import { EmploymentStatus } from 'src/common/enums/employmentStatus.enum';
 import { Role } from 'src/common/enums/role.enum';
 
 export class CreateEmployeeDto {
@@ -54,17 +53,14 @@ export class CreateEmployeeDto {
   @IsOptional()
   position?: EmployeePosition;
 
+  /**
+   * Fecha de ingreso. Genera automáticamente el movimiento de alta (HIRE) que
+   * inicia el historial laboral. `employmentStatus` y `terminationDate` no se
+   * cargan a mano: se derivan de los movimientos (`POST /hr/movements`).
+   */
   @IsDateString()
   @IsOptional()
   hireDate?: string;
-
-  @IsDateString()
-  @IsOptional()
-  terminationDate?: string;
-
-  @IsEnum(EmploymentStatus)
-  @IsOptional()
-  employmentStatus?: EmploymentStatus;
 
   @IsString()
   @IsOptional()

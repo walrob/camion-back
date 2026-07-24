@@ -30,6 +30,7 @@ import { Trailer } from '../fleet/entities/trailer.entity';
 import { Employee } from '../hr/entities/employee.entity';
 import { Certification } from '../hr/entities/certification.entity';
 import { TruckAssignment } from '../hr/entities/truck-assignment.entity';
+import { EmploymentMovement } from '../hr/entities/employment-movement.entity';
 import { Driver } from '../drivers/entities/driver.entity';
 import { Trip } from '../trips/entities/trip.entity';
 import { TripLogEntry } from '../trip-log/entities/trip-log-entry.entity';
@@ -54,6 +55,11 @@ import { TruckStatus } from '../common/enums/truckStatus.enum';
 import { TrailerStatus } from '../common/enums/trailerStatus.enum';
 import { DriverStatus } from '../common/enums/driverStatus.enum';
 import { EmploymentStatus } from '../common/enums/employmentStatus.enum';
+import {
+  EmploymentMovementType,
+  LeaveType,
+  MOVEMENT_RESULTING_STATUS,
+} from '../common/enums/employmentMovement.enum';
 import { EmployeePosition } from '../common/enums/employeePosition.enum';
 import { CertificationType } from '../common/enums/certificationType.enum';
 import { CertificationStatus } from '../common/enums/certificationStatus.enum';
@@ -129,6 +135,7 @@ async function run() {
       Employee,
       Certification,
       TruckAssignment,
+      EmploymentMovement,
       Driver,
       Trip,
       TripLogEntry,
@@ -774,12 +781,95 @@ async function run() {
     status: SettlementStatus.DRAFT,
   });
 
+  // ───────────────────── Movimientos del legajo (RRHH) ─────────────────────
+  // El historial es la fuente de verdad de `employmentStatus`. Se siembra el
+  // ingreso de todos y algunos casos vivos: licencia en curso, suspensión en
+  // curso, períodos ya cerrados y un legajo dado de baja.
+  const movementRepo = dataSource.getRepository(EmploymentMovement);
+
+  /** Ex empleado, para tener un legajo cerrado en el historial. */
+  const formerEmployee = await createEmployee({
+    firstName: 'Ricardo',
+    lastName: 'Vega',
+    documentId: '31777000',
+    position: EmployeePosition.DRIVER,
+    role: Role.DRIVER,
+    phone: '+54 11 6000-0007',
+    email: 'ricardo.vega@fleetlog.com',
+    hireDays: -1100,
+  });
+
+  // Ingreso de cada empleado sembrado (incluye staff, choferes y cuentas demo).
+  const allEmployees = await employeeRepo.find();
+  for (const emp of allEmployees) {
+    await movementRepo.save({
+      employeeId: emp.id,
+      type: EmploymentMovementType.HIRE,
+      startDate: emp.hireDate,
+      resultingStatus: EmploymentStatus.ACTIVE,
+      reason: 'Alta del legajo',
+    });
+  }
+
+  const addMovement = (
+    employee: Employee,
+    type: EmploymentMovementType,
+    startDays: number,
+    endDays: number | null,
+    extra: Partial<EmploymentMovement> = {},
+  ) =>
+    movementRepo.save({
+      employeeId: employee.id,
+      type,
+      startDate: dateStr(startDays),
+      endDate: endDays === null ? null : dateStr(endDays),
+      resultingStatus: MOVEMENT_RESULTING_STATUS[type],
+      ...extra,
+    });
+
+  // Períodos ya cerrados: quedan en el historial y no afectan el estado actual.
+  await addMovement(driverEmployees[0], EmploymentMovementType.SUSPENSION, -90, -87, {
+    reason: 'Suspensión 3 días por checklist incompleto',
+  });
+  await addMovement(driverEmployees[1], EmploymentMovementType.LEAVE, -60, -45, {
+    leaveType: LeaveType.VACATION,
+    reason: 'Vacaciones anuales',
+  });
+
+  // Licencia médica en curso, sin fecha de fin definida → ON_LEAVE.
+  await addMovement(driverEmployees[4], EmploymentMovementType.LEAVE, -5, null, {
+    leaveType: LeaveType.SICK,
+    reason: 'Reposo indicado por el médico laboral',
+  });
+  driverEmployees[4].employmentStatus = EmploymentStatus.ON_LEAVE;
+  await employeeRepo.save(driverEmployees[4]);
+
+  // Suspensión en curso, con fecha de fin → SUSPENDED hasta que el cron la cierre.
+  await addMovement(driverEmployees[5], EmploymentMovementType.SUSPENSION, -2, 3, {
+    reason: 'Suspensión preventiva mientras se investiga un incidente',
+  });
+  driverEmployees[5].employmentStatus = EmploymentStatus.SUSPENDED;
+  await employeeRepo.save(driverEmployees[5]);
+
+  // Legajo cerrado: licencia sin goce y luego baja.
+  await addMovement(formerEmployee, EmploymentMovementType.LEAVE, -240, -210, {
+    leaveType: LeaveType.UNPAID,
+    reason: 'Licencia sin goce de sueldo',
+  });
+  await addMovement(formerEmployee, EmploymentMovementType.TERMINATION, -180, null, {
+    reason: 'Renuncia',
+  });
+  formerEmployee.employmentStatus = EmploymentStatus.TERMINATED;
+  formerEmployee.terminationDate = dateStr(-180);
+  await employeeRepo.save(formerEmployee);
+
   // ───────────────────────── Resumen ─────────────────────────
   const counts = {
     flotas: await fleetRepo.count(),
     camiones: await truckRepo.count(),
     acoplados: await trailerRepo.count(),
     empleados: await employeeRepo.count(),
+    movimientosLegajo: await movementRepo.count(),
     usuarios: await userRepo.count(),
     choferes: await driverRepo.count(),
     viajes: await tripRepo.count(),
