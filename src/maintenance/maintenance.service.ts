@@ -19,6 +19,18 @@ import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface
 import { TrucksService } from 'src/fleet/trucks.service';
 import { AlertsService } from 'src/alerts/alerts.service';
 import { Truck } from 'src/fleet/entities/truck.entity';
+import {
+  PdfReport,
+  dateOnly,
+  money,
+  number as num,
+} from 'src/common/pdf/pdf-report.util';
+
+const ORDER_STATUS_LABELS: Record<string, string> = {
+  [MaintenanceOrderStatus.OPEN]: 'Abierta',
+  [MaintenanceOrderStatus.IN_PROGRESS]: 'En proceso',
+  [MaintenanceOrderStatus.DONE]: 'Finalizada',
+};
 
 @Injectable()
 export class MaintenanceService {
@@ -106,6 +118,67 @@ export class MaintenanceService {
     const order = await this.ordersRepository.findOne({ where: { id } });
     if (!order) throw new NotFoundException('Orden de trabajo no encontrada.');
     return order;
+  }
+
+  /** Orden de trabajo imprimible (comprobante para el taller). */
+  async buildOrderPdf(id: string): Promise<Buffer> {
+    const order = await this.ordersRepository.findOne({
+      where: { id },
+      relations: ['truck'],
+    });
+    if (!order) throw new NotFoundException('Orden de trabajo no encontrada.');
+
+    const truck = order.truck;
+    const items = order.items ?? [];
+    const done = order.status === MaintenanceOrderStatus.DONE;
+
+    const report = new PdfReport({
+      title: 'Orden de trabajo',
+      docId: order.id.slice(0, 8).toUpperCase(),
+      subtitle: truck ? `Unidad ${truck.plate}` : undefined,
+      badge: {
+        text: ORDER_STATUS_LABELS[order.status] ?? order.status,
+        tone: done ? 'ok' : order.status === MaintenanceOrderStatus.IN_PROGRESS ? 'warn' : 'neutral',
+      },
+      dataDateLabel: 'Fecha',
+      dataDate: order.date ?? null,
+    });
+
+    report.section('Datos de la orden', 0).fields([
+      { label: 'Fecha', value: dateOnly(order.date) },
+      { label: 'Estado', value: ORDER_STATUS_LABELS[order.status] ?? order.status },
+      {
+        label: 'Odómetro',
+        value: order.odometerKm != null ? `${num(order.odometerKm)} km` : '-',
+      },
+      { label: 'Camión', value: truck?.plate },
+      {
+        label: 'Marca / Modelo',
+        value: truck ? [truck.brand, truck.model, truck.year].filter(Boolean).join(' ') : '-',
+      },
+      { label: 'N° interno', value: truck?.internalNumber },
+    ]);
+
+    if (order.description) {
+      report.section('Trabajo a realizar').paragraph(order.description);
+    }
+
+    report.section('Repuestos / tareas').table({
+      columns: [
+        { label: 'Detalle', width: 60 },
+        { label: 'Costo', width: 22, align: 'right' },
+      ],
+      rows: items.map((it) => [it.name, it.cost != null ? money(it.cost) : '']),
+      totalRow: ['Total', money(order.cost)],
+      emptyText: 'Sin repuestos ni tareas detalladas.',
+    });
+
+    if (order.notes) {
+      report.section('Observaciones').paragraph(order.notes, { muted: true });
+    }
+
+    report.signatures(['Responsable del taller', 'Conformidad']);
+    return report.finish();
   }
 
   async updateOrder(

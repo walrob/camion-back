@@ -7,6 +7,13 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { IPaginationOptions, Pagination } from 'nestjs-typeorm-paginate';
+import * as XLSX from 'xlsx';
+import {
+  PdfReport,
+  dateOnly,
+  dateTime,
+  number as num,
+} from 'src/common/pdf/pdf-report.util';
 import { Trip } from './entities/trip.entity';
 import { CreateTripDto } from './dto/create-trip.dto';
 import { UpdateTripDto } from './dto/update-trip.dto';
@@ -38,6 +45,13 @@ const previousDay = (date: string): string => {
   const d = new Date(`${date}T00:00:00`);
   d.setDate(d.getDate() - 1);
   return toDateStr(d)!;
+};
+
+const TRIP_STATUS_LABELS: Record<string, string> = {
+  [TripStatus.ASSIGNED]: 'Asignado',
+  [TripStatus.IN_PROGRESS]: 'En curso',
+  [TripStatus.FINISHED]: 'Finalizado',
+  [TripStatus.CANCELED]: 'Cancelado',
 };
 
 // Columnas por las que se permite ordenar (clave del front → columna/alias real).
@@ -126,6 +140,158 @@ export class TripsService {
     });
     if (!trip) throw new NotFoundException('Viaje no encontrado.');
     return trip;
+  }
+
+  // ───────── Exportaciones ─────────
+
+  private driverName(trip: Trip): string {
+    const emp = trip.driver?.employee;
+    return emp ? `${emp.firstName} ${emp.lastName}` : '-';
+  }
+
+  /** Listado completo (sin paginar) que respeta los mismos filtros del listado. */
+  private filteredTrips(filters: {
+    search?: string;
+    status?: TripStatus;
+    truckId?: string;
+    driverId?: string;
+    from?: string;
+    to?: string;
+    sortBy?: string;
+    order?: string;
+  }): Promise<Trip[]> {
+    const { orderBy, order } = resolveSort(
+      filters.sortBy,
+      filters.order,
+      TRIP_SORTABLE,
+      { orderBy: 'plannedStartAt', order: 'DESC' },
+    );
+    const qb = this.tripsRepository
+      .createQueryBuilder('trip')
+      .leftJoinAndSelect('trip.truck', 'truck')
+      .leftJoinAndSelect('trip.trailer', 'trailer')
+      .leftJoinAndSelect('trip.driver', 'driver')
+      .leftJoinAndSelect('driver.employee', 'employee');
+
+    if (filters.status) qb.andWhere('trip.status = :status', { status: filters.status });
+    if (filters.truckId) qb.andWhere('trip.truckId = :truckId', { truckId: filters.truckId });
+    if (filters.driverId) qb.andWhere('trip.driverId = :driverId', { driverId: filters.driverId });
+    if (filters.from) qb.andWhere('trip.plannedStartAt >= :from', { from: filters.from });
+    if (filters.to) qb.andWhere('trip.plannedStartAt <= :to', { to: `${filters.to} 23:59:59.999` });
+    if (filters.search) {
+      qb.andWhere(
+        '(LOWER(trip.code) LIKE LOWER(:s) OR LOWER(trip.origin) LIKE LOWER(:s) OR LOWER(trip.destination) LIKE LOWER(:s))',
+        { s: `%${filters.search}%` },
+      );
+    }
+    return qb.orderBy(`trip.${orderBy}`, order as 'ASC' | 'DESC').getMany();
+  }
+
+  async exportXlsx(filters: {
+    search?: string;
+    status?: TripStatus;
+    truckId?: string;
+    driverId?: string;
+    from?: string;
+    to?: string;
+    sortBy?: string;
+    order?: string;
+  }): Promise<Buffer> {
+    const trips = await this.filteredTrips(filters);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.json_to_sheet(
+        trips.map((t) => ({
+          Codigo: t.code,
+          Estado: TRIP_STATUS_LABELS[t.status] ?? t.status,
+          Origen: t.origin,
+          Destino: t.destination,
+          Camion: t.truck?.plate ?? '-',
+          Acoplado: t.trailer?.plate ?? '-',
+          Chofer: this.driverName(t),
+          'Documento chofer': t.driver?.employee?.documentId ?? '-',
+          'Salida planificada': dateTime(t.plannedStartAt),
+          'Llegada planificada': dateTime(t.plannedEndAt),
+          'Salida real': dateTime(t.startedAt),
+          'Llegada real': dateTime(t.finishedAt),
+          'Distancia (km)': t.distanceKm != null ? Number(t.distanceKm) : '',
+          Carga: t.cargoDescription ?? '',
+          Notas: t.notes ?? '',
+        })),
+      ),
+      'Viajes',
+    );
+    return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  }
+
+  /** Hoja de ruta imprimible del viaje (comprobante para el chofer). */
+  async buildRouteSheetPdf(id: string): Promise<Buffer> {
+    const trip = await this.findOne(id);
+    const emp = trip.driver?.employee;
+    const truck = trip.truck;
+    const trailer = trip.trailer;
+
+    const report = new PdfReport({
+      title: 'Hoja de ruta',
+      docId: trip.code,
+      subtitle: `${trip.origin} → ${trip.destination}`,
+      badge: {
+        text: TRIP_STATUS_LABELS[trip.status] ?? trip.status,
+        tone:
+          trip.status === TripStatus.CANCELED
+            ? 'warn'
+            : trip.status === TripStatus.FINISHED
+              ? 'ok'
+              : 'neutral',
+      },
+      dataDateLabel: 'Salida planificada',
+      dataDate: trip.plannedStartAt ?? null,
+    });
+
+    report.section('Datos del viaje', 0).fields([
+      { label: 'Código', value: trip.code },
+      { label: 'Estado', value: TRIP_STATUS_LABELS[trip.status] ?? trip.status },
+      { label: 'Origen', value: trip.origin },
+      { label: 'Destino', value: trip.destination },
+      { label: 'Salida planificada', value: dateTime(trip.plannedStartAt) },
+      { label: 'Llegada planificada', value: dateTime(trip.plannedEndAt) },
+      { label: 'Salida real', value: dateTime(trip.startedAt) },
+      { label: 'Llegada real', value: dateTime(trip.finishedAt) },
+      { label: 'Carga', value: trip.cargoDescription },
+    ]);
+
+    report.section('Chofer y unidad').fields([
+      { label: 'Chofer', value: this.driverName(trip) },
+      { label: 'Documento', value: emp?.documentId },
+      { label: 'Teléfono', value: emp?.phone },
+      { label: 'Licencia N°', value: trip.driver?.licenseNumber },
+      { label: 'Categoría', value: trip.driver?.licenseType },
+      { label: 'Vencimiento licencia', value: dateOnly(trip.driver?.licenseExpiry) },
+      {
+        label: 'Camión',
+        value: truck
+          ? [truck.plate, truck.internalNumber && `(int. ${truck.internalNumber})`]
+              .filter(Boolean)
+              .join(' ')
+          : '-',
+      },
+      {
+        label: 'Marca / Modelo',
+        value: truck ? [truck.brand, truck.model, truck.year].filter(Boolean).join(' ') : '-',
+      },
+      {
+        label: 'Acoplado',
+        value: trailer ? `${trailer.plate}${trailer.type ? ` - ${trailer.type}` : ''}` : '-',
+      },
+    ]);
+
+    if (trip.notes) {
+      report.section('Observaciones').paragraph(trip.notes, { muted: true });
+    }
+
+    report.signatures(['Firma del chofer', 'Despacho / Administración']);
+    return report.finish();
   }
 
   async findMine(userId: string, status?: TripStatus): Promise<Trip[]> {
