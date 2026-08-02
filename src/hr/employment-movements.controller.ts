@@ -6,13 +6,15 @@ import {
   Param,
   Patch,
   Post,
+  UploadedFile,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { EmploymentMovementsService } from './employment-movements.service';
 import { CreateMovementDto } from './dto/create-movement.dto';
 import { UpdateMovementDto } from './dto/update-movement.dto';
 import { Auth } from 'src/auth/decorators/auth.decorator';
 import { Role } from 'src/common/enums/role.enum';
+import { UploadFile } from 'src/common/decorators/upload-file.decorator';
 import { ActiveUser } from 'src/common/decorators/active-user.decorator';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
 
@@ -26,11 +28,14 @@ export class EmploymentMovementsController {
 
   @Post()
   @Auth(Role.ADMIN, Role.HR)
+  @UploadFile()
+  @ApiConsumes('multipart/form-data')
   create(
     @Body() dto: CreateMovementDto,
+    @UploadedFile() file: Express.Multer.File,
     @ActiveUser() user: ActiveUserInterface,
   ) {
-    return this.movementsService.create(dto, user);
+    return this.movementsService.create(dto, user, file);
   }
 
   /** Licencias y suspensiones vigentes hoy. */
@@ -46,14 +51,23 @@ export class EmploymentMovementsController {
     return this.movementsService.findOne(id);
   }
 
+  @Get(':id/file')
+  @Auth(Role.ADMIN, Role.HR, Role.MANAGER, Role.DISPATCHER)
+  file(@Param('id') id: string) {
+    return this.movementsService.getFileUrl(id);
+  }
+
   @Patch(':id')
   @Auth(Role.ADMIN, Role.HR)
+  @UploadFile()
+  @ApiConsumes('multipart/form-data')
   update(
     @Param('id') id: string,
     @Body() dto: UpdateMovementDto,
+    @UploadedFile() file: Express.Multer.File,
     @ActiveUser() user: ActiveUserInterface,
   ) {
-    return this.movementsService.update(id, dto, user);
+    return this.movementsService.update(id, dto, user, file);
   }
 
   /** Reincorporación anticipada: cierra hoy el período abierto. */

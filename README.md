@@ -33,14 +33,14 @@ dashboard, indicadores y liquidaciones automáticas).
 |---|--------|-------------|
 | 1 | **Bitácora Digital del Viaje** | Peajes, gastos, adelantos, reparaciones, multas, viáticos, km, fotos de comprobantes, observaciones (el *gasto* de combustible se registra acá; el *detalle técnico* con rendimiento vive en el módulo 11) |
 | 2 | **Centro de Incidentes** | Rotura, accidente, falta de dinero, retraso, problema de carga/cliente, emergencia — con foto/GPS/audio/video y estados |
-| 3 | **Alertas Inteligentes** | Prioriza 🔴 accidente / 🟠 camión detenido / 🟡 exceso de gasto / 🟢 documentación |
+| 3 | **Alertas Inteligentes** | Prioriza 🔴 accidente / 🟠 camión detenido o licencia finalizada para asignar / 🟡 exceso de gasto o viaje asignado a chofer que venía de licencia / 🟢 documentación |
 | 4 | **App del Chofer** | Experiencia móvil (PWA + Capacitor) que agrupa viajes, bitácora, incidentes, checklist, mensajes, documentos y firma |
 | 5 | **Checklist pre-viaje** | Luces, frenos, cubiertas, aceite, matafuego, documentación, acoplado — con fotos y firma |
 | 6 | **Mantenimiento Preventivo** | Control por km/horas/fecha con avisos automáticos |
 | 7 | **Dashboard Gerencial** | Camiones viajando/detenidos, incidentes abiertos, gastos del día, novedades, mantenimientos, demoras |
 | 8 | **Centro Documental** | Seguro, VTV, licencias, carnet, habilitaciones, remitos, cartas de porte — con vencimientos automáticos |
 | 9 | **Indicadores** | Gasto por km/camión/chofer, resolución de incidentes, roturas, horas detenidas, rendimiento, disponibilidad |
-| 10 | **RRHH (Personal)** | Legajos del personal, asignación chofer↔camión y permisos/habilitaciones con vencimiento (carnet, carga peligrosa, psicofísico, LiNTI…) |
+| 10 | **RRHH (Personal)** | Legajos del personal, asignación chofer↔camión y permisos/habilitaciones con vencimiento y **archivo adjunto** (carnet, carga peligrosa, psicofísico, LiNTI…). **Historial laboral**: movimientos (ingreso, licencia, suspensión, reincorporación, baja) con `employmentStatus` **derivado y auto-corregido** por cron; reglas cruzadas con Viajes (no asignar a chofer no disponible / no cargar licencia con viajes abiertos) |
 | 11 | **Combustible** | Registro dedicado de cargas (litros, precio/litro, moneda, estación, odómetro, tanque lleno) con cálculo de rendimiento l/100km, GPS, reporte y export a Excel, y carga offline desde la app del chofer |
 | 12 | **OEA (Inspección)** | Planilla de inspección OEA (Operador Económico Autorizado): datos de transporte y carga, precintos aduaneros/seguridad, ítems de checklist, resultado, firma digital + GPS, vínculo opcional con el viaje y sincronización offline |
 
@@ -57,7 +57,7 @@ Archivos:         AWS S3 (StorageService) + sharp (compresión)
 Tiempo real:      WebSockets (socket.io) — alertas, incidentes, dashboard
 Tareas cron:      @nestjs/schedule — vencimientos, mantenimiento, "camión detenido"
 Notificaciones:   Email (nodemailer) + Push (FCM vía Capacitor, planificado)
-Reportes:         pdfkit (liquidaciones) + xlsx (indicadores)
+Reportes:         pdfkit (liquidaciones, hoja de ruta de viaje, orden de trabajo) + xlsx (indicadores, combustible, viajes, vencimientos)
 Docs API:         Swagger
 Frontend:         Nuxt 3 + Vuetify 3 + Pinia (carpeta ../front-camion, con Capacitor)
 ```
@@ -97,6 +97,9 @@ ejecutarlas en sesiones separadas:
 | 10 | PWA + Mensajería + Offline-first + Push (scaffold) | ✅ |
 | +  | Combustible (módulo dedicado: rendimiento l/100km, reporte + export Excel) | ✅ |
 | +  | OEA (planilla de inspección: precintos, firma digital + GPS, sync offline) | ✅ |
+| +  | Historial laboral de RRHH (movimientos, estado derivado + cron, reglas con Viajes, alertas `employment`, tablero "fuera de servicio hoy") | ✅ |
+| +  | Exportaciones y comprobantes (Excel de viajes y vencimientos; PDF de hoja de ruta de viaje y orden de trabajo) | ✅ |
+| +  | Adjuntos en permisos/habilitaciones y en movimientos del historial laboral (imagen/PDF vía S3) | ✅ |
 
 > Las filas marcadas con **+** son módulos incorporados después de las 10 fases
 > originales del plan.

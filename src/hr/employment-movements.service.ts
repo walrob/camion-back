@@ -23,6 +23,7 @@ import {
 } from 'src/common/enums/employmentMovement.enum';
 import { EmploymentStatus } from 'src/common/enums/employmentStatus.enum';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
+import { StorageService } from 'src/common/storage/storage.service';
 
 /** Fecha de hoy en 'YYYY-MM-DD' (las columnas `date` se comparan como string). */
 const asDateStr = (d: Date): string => {
@@ -61,6 +62,7 @@ export class EmploymentMovementsService {
     private readonly driversRepository: Repository<Driver>,
     @InjectRepository(Trip)
     private readonly tripsRepository: Repository<Trip>,
+    private readonly storageService: StorageService,
   ) {}
 
   // ───────────────────────── Cálculo del estado ─────────────────────────
@@ -179,6 +181,7 @@ export class EmploymentMovementsService {
   async create(
     dto: CreateMovementDto,
     user: ActiveUserInterface,
+    file?: Express.Multer.File,
   ): Promise<EmploymentMovement> {
     const employee = await this.employeesRepository.findOne({
       where: { id: dto.employeeId },
@@ -199,8 +202,15 @@ export class EmploymentMovementsService {
       dto.endDate,
     );
 
+    // El fileKey lo define el archivo subido, nunca el cliente.
+    const { fileKey: _ignored, ...rest } = dto;
+    const fileKey = file
+      ? await this.storageService.uploadFile(file, 'movements')
+      : undefined;
+
     const movement = this.movementsRepository.create({
-      ...dto,
+      ...rest,
+      fileKey,
       leaveType:
         dto.type === EmploymentMovementType.LEAVE
           ? (dto.leaveType ?? LeaveType.OTHER)
@@ -246,6 +256,7 @@ export class EmploymentMovementsService {
     id: string,
     dto: UpdateMovementDto,
     user: ActiveUserInterface,
+    file?: Express.Multer.File,
   ): Promise<EmploymentMovement> {
     const movement = await this.findOne(id);
 
@@ -270,7 +281,12 @@ export class EmploymentMovementsService {
       endDate,
     );
 
-    Object.assign(movement, dto, {
+    if (file) {
+      movement.fileKey = await this.storageService.uploadFile(file, 'movements');
+    }
+
+    const { fileKey: _ignored, ...rest } = dto;
+    Object.assign(movement, rest, {
       type,
       startDate,
       endDate: isPeriodMovement(type) ? (endDate ?? null) : null,
@@ -285,6 +301,14 @@ export class EmploymentMovementsService {
 
     await this.recomputeEmployee(movement.employeeId);
     return saved;
+  }
+
+  /** URL firmada (temporal) para ver/descargar el adjunto respaldatorio. */
+  async getFileUrl(id: string): Promise<{ url: string }> {
+    const movement = await this.findOne(id);
+    if (!movement.fileKey) return { url: '' };
+    const url = await this.storageService.getPresignedUrl(movement.fileKey, 300);
+    return { url };
   }
 
   /** Cierra hoy una licencia/suspensión abierta (reincorporación anticipada). */

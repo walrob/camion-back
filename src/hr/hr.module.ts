@@ -17,6 +17,7 @@ import { EmploymentMovementsController } from './employment-movements.controller
 import { AuthModule } from 'src/auth/auth.module';
 import { AlertsModule } from 'src/alerts/alerts.module';
 import { UsersModule } from 'src/users/users.module';
+import { StorageModule } from 'src/common/storage/storage.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { UsersModule } from 'src/users/users.module';
     forwardRef(() => AuthModule),
     AlertsModule,
     UsersModule,
+    StorageModule,
   ],
   controllers: [
     EmployeesController,
