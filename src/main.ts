@@ -17,19 +17,22 @@ async function bootstrap() {
     }),
   );
 
+  // En dev aceptamos localhost y cualquier IP de LAN privada, así se puede
+  // probar desde el celular u otra PC con `nuxt dev --host`.
+  // (10.0.2.2 = host de la máquina desde el emulador de Android.)
+  const LAN_ORIGIN =
+    /^https?:\/\/(localhost|127\.0\.0\.1|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?$/;
+
   app.enableCors({
     origin: (origin, callback) => {
-      const allowedOrigins =
-        process.env.NODE_ENV === 'production'
-          ? [process.env.FRONTEND_URL].filter(Boolean)
-          : [
-              'http://localhost:3000',
-              'http://localhost:3001',
-              'http://10.0.2.2:3000',
-            ];
-
       if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) return callback(null, true);
+
+      const allowed =
+        process.env.NODE_ENV === 'production'
+          ? [process.env.FRONTEND_URL].filter(Boolean).includes(origin)
+          : LAN_ORIGIN.test(origin);
+
+      if (allowed) return callback(null, true);
 
       return callback(new Error('Not allowed by CORS'));
     },
