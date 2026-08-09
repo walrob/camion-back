@@ -47,7 +47,11 @@ export class UsersService {
         'profileImage',
         'isTemplateDark',
         'isDemo',
+        // La empresa y su estado comercial viajan en el JWT: son el eje del
+        // aislamiento entre empresas.
+        'companyId',
       ],
+      relations: ['company'],
     });
   }
 

@@ -7,6 +7,7 @@ import {
   ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
+  Unique,
   UpdateDateColumn,
 } from 'typeorm';
 import {
@@ -18,9 +19,12 @@ import { Truck } from 'src/fleet/entities/truck.entity';
 import { Driver } from 'src/drivers/entities/driver.entity';
 import { User } from 'src/users/entities/user.entity';
 import { IncidentEvent } from './incident-event.entity';
+import { TenantEntity } from 'src/common/entities/tenant.entity';
 
+// El código correlativo lo emite company_sequences, que numera por empresa.
 @Entity('incidents')
-export class Incident {
+@Unique('UQ_incidents_company_code', ['companyId', 'code'])
+export class Incident extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -42,7 +46,7 @@ export class Incident {
   @Column({ nullable: true })
   deletedBy: string;
 
-  @Column({ unique: true })
+  @Column()
   code: string;
 
   @Column({ nullable: true })

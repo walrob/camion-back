@@ -10,6 +10,7 @@ import {
 } from 'typeorm';
 import { DriverStatus } from 'src/common/enums/driverStatus.enum';
 import { Employee } from 'src/hr/entities/employee.entity';
+import { TenantEntity } from 'src/common/entities/tenant.entity';
 
 /**
  * Driver es una capacidad operativa de un Employee (RRHH). El dato personal y el
@@ -17,7 +18,7 @@ import { Employee } from 'src/hr/entities/employee.entity';
  * Relación 1:1 con Employee: un legajo no puede tener dos perfiles de chofer.
  */
 @Entity('drivers')
-export class Driver {
+export class Driver extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -39,6 +40,12 @@ export class Driver {
   @Column({ nullable: true })
   deletedBy: string;
 
+  /**
+   * Único GLOBAL, y está bien que así sea: es una FK a `employees`, cuyo id ya
+   * es un UUID único en todo el sistema. La restricción expresa "un chofer por
+   * empleado" y no puede colisionar entre empresas, porque un empleado
+   * pertenece a una sola. Scoparla por `companyId` sería redundante.
+   */
   @Column({ unique: true })
   employeeId: string;
 

@@ -15,6 +15,7 @@ import {
 } from 'src/common/enums/employmentMovement.enum';
 import { EmploymentStatus } from 'src/common/enums/employmentStatus.enum';
 import { Employee } from './employee.entity';
+import { TenantEntity } from 'src/common/entities/tenant.entity';
 
 /**
  * Un asiento del legajo laboral: ingreso, licencia, suspensión, reincorporación
@@ -23,7 +24,7 @@ import { Employee } from './employee.entity';
  */
 @Entity('employment_movements')
 @Index(['employeeId', 'startDate'])
-export class EmploymentMovement {
+export class EmploymentMovement extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 

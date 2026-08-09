@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -25,6 +25,10 @@ import { MessagesModule } from './messages/messages.module';
 import { PushModule } from './notifications/push/push.module';
 import { FuelModule } from './fuel/fuel.module';
 import { OeaModule } from './oea/oea.module';
+import { CompaniesModule } from './companies/companies.module';
+import { PlansModule } from './plans/plans.module';
+import { TenantModule } from './common/tenant/tenant.module';
+import { TenantContextMiddleware } from './common/tenant/tenant-context.middleware';
 
 @Module({
   imports: [
@@ -46,7 +50,16 @@ import { OeaModule } from './oea/oea.module';
         password: configService.get<string>('DB_PASSWORD'),
         database: configService.get<string>('DB_DATABASE'),
         autoLoadEntities: true,
-        synchronize: true,
+
+        // El esquema se cambia SOLO por migración. `synchronize: true` aplicaba
+        // cambios automáticos y no auditados en cada arranque: era imposible
+        // agregar `companyId` a las 27 entidades y migrar los datos existentes
+        // de forma controlada y reversible.
+        // La configuración equivalente para el CLI está en
+        // `src/database/data-source.ts`.
+        synchronize: false,
+        migrations: [__dirname + '/database/migrations/*{.ts,.js}'],
+        migrationsRun: true,
       }),
     }),
 
@@ -69,6 +82,12 @@ import { OeaModule } from './oea/oea.module';
       }),
     }),
 
+    // Multi-empresa: van primero porque el resto de las entidades referencian
+    // Company a través de TenantEntity.
+    CompaniesModule,
+    PlansModule,
+    // Global: engancha el TenantSubscriber (estampado y tripwire) al DataSource.
+    TenantModule,
     UsersModule,
     AuthModule,
     StorageModule,
@@ -95,4 +114,10 @@ import { OeaModule } from './oea/oea.module';
   controllers: [],
   providers: [],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    // A TODAS las rutas: si sólo se aplicara a las autenticadas, una ruta nueva
+    // que se olvide de registrar quedaría sin contexto y sin filtrar.
+    consumer.apply(TenantContextMiddleware).forRoutes('*');
+  }
+}

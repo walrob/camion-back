@@ -12,9 +12,10 @@ import {
   ChecklistItemStatus,
 } from 'src/common/enums/checklist.enum';
 import { Checklist } from './checklist.entity';
+import { TenantEntity } from 'src/common/entities/tenant.entity';
 
 @Entity('checklist_items')
-export class ChecklistItem {
+export class ChecklistItem extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 

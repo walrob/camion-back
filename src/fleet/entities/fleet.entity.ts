@@ -5,12 +5,16 @@ import {
   Entity,
   OneToMany,
   PrimaryGeneratedColumn,
+  Unique,
   UpdateDateColumn,
 } from 'typeorm';
 import { Truck } from './truck.entity';
+import { TenantEntity } from 'src/common/entities/tenant.entity';
 
+// El código de agrupación de flota es único DENTRO de cada empresa.
 @Entity('fleets')
-export class Fleet {
+@Unique('UQ_fleets_company_code', ['companyId', 'code'])
+export class Fleet extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -35,7 +39,7 @@ export class Fleet {
   @Column()
   name: string;
 
-  @Column({ unique: true })
+  @Column()
   code: string;
 
   @Column({ nullable: true })

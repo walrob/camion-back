@@ -12,10 +12,11 @@ import {
   DocumentOwnerType,
   DocumentStatus,
 } from 'src/common/enums/document.enum';
+import { TenantEntity } from 'src/common/entities/tenant.entity';
 
 @Entity('documents')
 @Index(['ownerType', 'ownerId'])
-export class Document {
+export class Document extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 

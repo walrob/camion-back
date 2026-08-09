@@ -1,5 +1,5 @@
 import { forwardRef, Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
+import { TenantTypeOrmModule } from 'src/common/tenant/tenant-typeorm.module';
 import { Message } from './entities/message.entity';
 import { MessagesService } from './messages.service';
 import { MessagesController } from './messages.controller';
@@ -8,7 +8,7 @@ import { AuthModule } from 'src/auth/auth.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Message]),
+    TenantTypeOrmModule.forFeature([Message]),
     forwardRef(() => AuthModule),
   ],
   controllers: [MessagesController],

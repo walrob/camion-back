@@ -4,12 +4,16 @@ import {
   DeleteDateColumn,
   Entity,
   PrimaryGeneratedColumn,
+  Unique,
   UpdateDateColumn,
 } from 'typeorm';
 import { TrailerStatus } from 'src/common/enums/trailerStatus.enum';
+import { TenantEntity } from 'src/common/entities/tenant.entity';
 
+// La patente es única DENTRO de cada empresa (mismo criterio que en camiones).
 @Entity('trailers')
-export class Trailer {
+@Unique('UQ_trailers_company_plate', ['companyId', 'plate'])
+export class Trailer extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -31,7 +35,7 @@ export class Trailer {
   @Column({ nullable: true })
   deletedBy: string;
 
-  @Column({ unique: true })
+  @Column()
   plate: string;
 
   @Column({ nullable: true })

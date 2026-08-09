@@ -10,9 +10,10 @@ import {
 } from 'typeorm';
 import { Employee } from './employee.entity';
 import { Truck } from 'src/fleet/entities/truck.entity';
+import { TenantEntity } from 'src/common/entities/tenant.entity';
 
 @Entity('truck_assignments')
-export class TruckAssignment {
+export class TruckAssignment extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 

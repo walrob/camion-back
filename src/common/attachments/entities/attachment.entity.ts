@@ -8,6 +8,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { AttachmentKind } from 'src/common/enums/attachmentKind.enum';
+import { TenantEntity } from 'src/common/entities/tenant.entity';
 
 /**
  * Adjunto polimórfico reutilizable: se asocia a cualquier entidad del sistema
@@ -16,7 +17,7 @@ import { AttachmentKind } from 'src/common/enums/attachmentKind.enum';
  */
 @Entity('attachments')
 @Index(['entityType', 'entityId'])
-export class Attachment {
+export class Attachment extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 

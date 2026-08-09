@@ -7,6 +7,7 @@ import {
   OneToMany,
   OneToOne,
   PrimaryGeneratedColumn,
+  Unique,
   UpdateDateColumn,
 } from 'typeorm';
 import { EmployeePosition } from 'src/common/enums/employeePosition.enum';
@@ -15,9 +16,13 @@ import { User } from 'src/users/entities/user.entity';
 import { Certification } from './certification.entity';
 import { TruckAssignment } from './truck-assignment.entity';
 import { EmploymentMovement } from './employment-movement.entity';
+import { TenantEntity } from 'src/common/entities/tenant.entity';
 
+// El documento es único DENTRO de cada empresa: la misma persona puede estar
+// cargada como empleado en dos empresas distintas.
 @Entity('employees')
-export class Employee {
+@Unique('UQ_employees_company_document', ['companyId', 'documentId'])
+export class Employee extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -52,7 +57,7 @@ export class Employee {
   @Column()
   lastName: string;
 
-  @Column({ unique: true })
+  @Column()
   documentId: string;
 
   @Column({ type: 'date', nullable: true })

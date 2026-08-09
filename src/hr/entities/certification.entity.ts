@@ -11,9 +11,10 @@ import {
 import { CertificationType } from 'src/common/enums/certificationType.enum';
 import { CertificationStatus } from 'src/common/enums/certificationStatus.enum';
 import { Employee } from './employee.entity';
+import { TenantEntity } from 'src/common/entities/tenant.entity';
 
 @Entity('certifications')
-export class Certification {
+export class Certification extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 

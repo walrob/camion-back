@@ -9,9 +9,10 @@ import {
 } from 'typeorm';
 import { ChecklistResult } from 'src/common/enums/checklist.enum';
 import { ChecklistItem } from './checklist-item.entity';
+import { TenantEntity } from 'src/common/entities/tenant.entity';
 
 @Entity('checklists')
-export class Checklist {
+export class Checklist extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 

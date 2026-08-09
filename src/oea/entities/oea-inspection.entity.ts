@@ -8,17 +8,21 @@ import {
   ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
+  Unique,
   UpdateDateColumn,
 } from 'typeorm';
 import { OeaResult } from 'src/common/enums/oea.enum';
 import { Truck } from 'src/fleet/entities/truck.entity';
 import { Driver } from 'src/drivers/entities/driver.entity';
 import { OeaInspectionItem } from './oea-inspection-item.entity';
+import { TenantEntity } from 'src/common/entities/tenant.entity';
 
+// clientId se scopea por empresa (mismo criterio que en fuel_records).
 @Entity('oea_inspections')
 @Index(['truckId'])
 @Index(['driverId'])
-export class OeaInspection {
+@Unique('UQ_oea_inspections_company_client', ['companyId', 'clientId'])
+export class OeaInspection extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -112,7 +116,7 @@ export class OeaInspection {
   notes: string;
 
   // Idempotencia para sincronización offline del chofer.
-  @Column({ nullable: true, unique: true })
+  @Column({ nullable: true })
   clientId: string;
 
   @OneToMany(() => OeaInspectionItem, (item) => item.inspection, {

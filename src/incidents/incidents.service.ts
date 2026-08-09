@@ -19,6 +19,8 @@ import { User } from 'src/users/entities/user.entity';
 import { DriversService } from 'src/drivers/drivers.service';
 import { IncidentsGateway } from './incidents.gateway';
 import { AlertsService } from 'src/alerts/alerts.service';
+import { SequencesService } from 'src/common/sequences/sequences.service';
+import { SequenceKey } from 'src/common/entities/company-sequence.entity';
 
 @Injectable()
 export class IncidentsService {
@@ -30,6 +32,7 @@ export class IncidentsService {
     private readonly driversService: DriversService,
     private readonly gateway: IncidentsGateway,
     private readonly alertsService: AlertsService,
+    private readonly sequences: SequencesService,
   ) {}
 
   async create(
@@ -48,7 +51,10 @@ export class IncidentsService {
       ...dto,
       severity,
       driverId: driver.id,
-      code: await this.generateCode(),
+      // El incidente pertenece a la misma empresa que el chofer que lo reporta.
+      // A partir de la fase 2 la empresa viaja en el token y se lee de `user`.
+      companyId: driver.companyId,
+      code: await this.generateCode(driver.companyId),
       createdBy: user.id,
     });
     const saved = await this.incidentsRepository.save(incident);
@@ -243,8 +249,11 @@ export class IncidentsService {
     return d;
   }
 
-  private async generateCode(): Promise<string> {
-    const count = await this.incidentsRepository.count();
-    return `INC-${(count + 1).toString().padStart(5, '0')}`;
+  /**
+   * Correlativo por empresa. Ver el comentario de `SequencesService`: el
+   * `count()` anterior mezclaba empresas y repetía códigos.
+   */
+  private generateCode(companyId: string): Promise<string> {
+    return this.sequences.nextCode(companyId, SequenceKey.INCIDENT, 'INC-');
   }
 }

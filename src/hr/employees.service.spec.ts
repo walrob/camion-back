@@ -9,7 +9,7 @@ import { EmployeePosition } from 'src/common/enums/employeePosition.enum';
 import { EmploymentMovementType } from 'src/common/enums/employmentMovement.enum';
 import { Role } from 'src/common/enums/role.enum';
 
-const activeUser = { id: 'admin-1', role: 'admin' };
+const activeUser = { id: 'admin-1', companyId: 'company-test', role: 'admin' };
 
 describe('EmployeesService.create (alta con cuenta opcional)', () => {
   let service: EmployeesService;

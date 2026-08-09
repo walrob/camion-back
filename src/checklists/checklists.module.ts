@@ -1,5 +1,5 @@
 import { forwardRef, Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
+import { TenantTypeOrmModule } from 'src/common/tenant/tenant-typeorm.module';
 import { Checklist } from './entities/checklist.entity';
 import { ChecklistItem } from './entities/checklist-item.entity';
 import { ChecklistsService } from './checklists.service';
@@ -9,7 +9,7 @@ import { DriversModule } from 'src/drivers/drivers.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Checklist, ChecklistItem]),
+    TenantTypeOrmModule.forFeature([Checklist, ChecklistItem]),
     forwardRef(() => AuthModule),
     DriversModule,
   ],

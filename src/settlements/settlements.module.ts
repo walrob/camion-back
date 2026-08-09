@@ -1,3 +1,4 @@
+import { TenantTypeOrmModule } from 'src/common/tenant/tenant-typeorm.module';
 import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Settlement } from './entities/settlement.entity';
@@ -11,7 +12,7 @@ import { StorageModule } from 'src/common/storage/storage.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Settlement, Trip]),
+    TenantTypeOrmModule.forFeature([Settlement, Trip]),
     forwardRef(() => AuthModule),
     TripsModule,
     TripLogModule,

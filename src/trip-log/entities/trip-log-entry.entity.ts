@@ -7,14 +7,18 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
+  Unique,
   UpdateDateColumn,
 } from 'typeorm';
 import { TripLogType } from 'src/common/enums/tripLogType.enum';
 import { Trip } from 'src/trips/entities/trip.entity';
+import { TenantEntity } from 'src/common/entities/tenant.entity';
 
+// clientId se scopea por empresa (mismo criterio que en fuel_records).
 @Entity('trip_log_entries')
 @Index(['tripId'])
-export class TripLogEntry {
+@Unique('UQ_trip_log_entries_company_client', ['companyId', 'clientId'])
+export class TripLogEntry extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -71,6 +75,6 @@ export class TripLogEntry {
   notes: string;
 
   // Idempotencia para sincronización offline del chofer (Fase 10).
-  @Column({ nullable: true, unique: true })
+  @Column({ nullable: true })
   clientId: string;
 }

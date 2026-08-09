@@ -9,7 +9,7 @@ import { EmploymentMovementType } from 'src/common/enums/employmentMovement.enum
 import { EmploymentStatus } from 'src/common/enums/employmentStatus.enum';
 import { TripStatus } from 'src/common/enums/tripStatus.enum';
 
-const activeUser = { id: 'hr-1', role: 'hr' };
+const activeUser = { id: 'hr-1', companyId: 'company-test', role: 'hr' };
 
 /** Arma un movimiento mínimo; `createdAt` desempata los del mismo día. */
 const mov = (

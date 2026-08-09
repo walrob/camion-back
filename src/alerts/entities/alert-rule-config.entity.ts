@@ -3,12 +3,16 @@ import {
   CreateDateColumn,
   Entity,
   PrimaryGeneratedColumn,
+  Unique,
   UpdateDateColumn,
 } from 'typeorm';
+import { TenantEntity } from 'src/common/entities/tenant.entity';
 
 /** Umbrales configurables del motor de alertas (key/value). */
+// Cada empresa configura sus propios umbrales: la clave es única por empresa.
 @Entity('alert_rule_configs')
-export class AlertRuleConfig {
+@Unique('UQ_alert_rule_configs_company_key', ['companyId', 'key'])
+export class AlertRuleConfig extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -18,7 +22,7 @@ export class AlertRuleConfig {
   @UpdateDateColumn()
   updatedAt: Date;
 
-  @Column({ unique: true })
+  @Column()
   key: string;
 
   @Column()

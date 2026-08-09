@@ -6,13 +6,18 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
+  Unique,
   UpdateDateColumn,
 } from 'typeorm';
 import { TruckStatus } from 'src/common/enums/truckStatus.enum';
 import { Fleet } from './fleet.entity';
+import { TenantEntity } from 'src/common/entities/tenant.entity';
 
+// La patente es única DENTRO de cada empresa: dos empresas distintas pueden
+// tener cargado el mismo camión (por ejemplo, tras la venta de una unidad).
 @Entity('trucks')
-export class Truck {
+@Unique('UQ_trucks_company_plate', ['companyId', 'plate'])
+export class Truck extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -34,7 +39,7 @@ export class Truck {
   @Column({ nullable: true })
   deletedBy: string;
 
-  @Column({ unique: true })
+  @Column()
   plate: string;
 
   @Column({ nullable: true })

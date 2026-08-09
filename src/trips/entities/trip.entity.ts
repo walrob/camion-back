@@ -6,15 +6,19 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
+  Unique,
   UpdateDateColumn,
 } from 'typeorm';
 import { TripStatus } from 'src/common/enums/tripStatus.enum';
 import { Truck } from 'src/fleet/entities/truck.entity';
 import { Trailer } from 'src/fleet/entities/trailer.entity';
 import { Driver } from 'src/drivers/entities/driver.entity';
+import { TenantEntity } from 'src/common/entities/tenant.entity';
 
+// El código correlativo lo emite company_sequences, que numera por empresa.
 @Entity('trips')
-export class Trip {
+@Unique('UQ_trips_company_code', ['companyId', 'code'])
+export class Trip extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -36,7 +40,7 @@ export class Trip {
   @Column({ nullable: true })
   deletedBy: string;
 
-  @Column({ unique: true })
+  @Column()
   code: string;
 
   @Column()

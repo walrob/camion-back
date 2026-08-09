@@ -13,9 +13,10 @@ import {
   OeaSection,
 } from 'src/common/enums/oea.enum';
 import { OeaInspection } from './oea-inspection.entity';
+import { TenantEntity } from 'src/common/entities/tenant.entity';
 
 @Entity('oea_inspection_items')
-export class OeaInspectionItem {
+export class OeaInspectionItem extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 

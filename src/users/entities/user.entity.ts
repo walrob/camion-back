@@ -7,9 +7,10 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { TenantEntity } from 'src/common/entities/tenant.entity';
 
 @Entity()
-export class User {
+export class User extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -31,6 +32,17 @@ export class User {
   @Column({ nullable: true })
   deletedBy: string;
 
+  /**
+   * Único GLOBAL, no por empresa (decisión D1 del plan de conversión a SaaS).
+   * Un usuario pertenece a UNA empresa por vez.
+   *
+   * Consecuencia asumida: si una persona deja la empresa A y entra a la B con
+   * el mismo email, NO se da de alta un usuario nuevo — se reasigna el
+   * existente cambiándole `companyId`. Así el histórico de la empresa A
+   * (`createdBy`, viajes, rendiciones) sigue apuntando a un usuario válido.
+   * La reasignación es una operación de superadmin: un admin de la empresa B no
+   * debe poder reclamar el email de otra empresa por su cuenta.
+   */
   @Column({ unique: true, nullable: false })
   email: string;
 
@@ -54,6 +66,17 @@ export class User {
 
   @Column({ default: false })
   blocked: Boolean;
+
+  /**
+   * Usuario activo en la empresa actual (decisión D1).
+   *
+   * Es distinto de `blocked` (que es una sanción) y de `deletedAt` (que es una
+   * baja lógica): `isActive: false` es el estado normal de quien ya no trabaja
+   * en la empresa pero cuyo registro se conserva para que el histórico siga
+   * teniendo a quién apuntar.
+   */
+  @Column({ default: true })
+  isActive: boolean;
 
   /**
    * Cuenta de demostración de solo lectura (para mostrar el sistema a clientes).

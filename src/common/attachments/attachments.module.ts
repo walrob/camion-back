@@ -1,5 +1,5 @@
 import { forwardRef, Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
+import { TenantTypeOrmModule } from 'src/common/tenant/tenant-typeorm.module';
 import { Attachment } from './entities/attachment.entity';
 import { AttachmentsService } from './attachments.service';
 import { AttachmentsController } from './attachments.controller';
@@ -8,7 +8,7 @@ import { AuthModule } from 'src/auth/auth.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Attachment]),
+    TenantTypeOrmModule.forFeature([Attachment]),
     StorageModule,
     forwardRef(() => AuthModule),
   ],

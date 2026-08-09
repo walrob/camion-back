@@ -1,5 +1,5 @@
 import { forwardRef, Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
+import { TenantTypeOrmModule } from 'src/common/tenant/tenant-typeorm.module';
 import { MaintenancePlan } from './entities/maintenance-plan.entity';
 import { MaintenanceOrder } from './entities/maintenance-order.entity';
 import { MaintenanceService } from './maintenance.service';
@@ -10,7 +10,7 @@ import { AlertsModule } from 'src/alerts/alerts.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([MaintenancePlan, MaintenanceOrder]),
+    TenantTypeOrmModule.forFeature([MaintenancePlan, MaintenanceOrder]),
     forwardRef(() => AuthModule),
     FleetModule,
     AlertsModule,

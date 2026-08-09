@@ -13,9 +13,10 @@ import {
   MaintenanceTriggerType,
 } from 'src/common/enums/maintenance.enum';
 import { Truck } from 'src/fleet/entities/truck.entity';
+import { TenantEntity } from 'src/common/entities/tenant.entity';
 
 @Entity('maintenance_plans')
-export class MaintenancePlan {
+export class MaintenancePlan extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 

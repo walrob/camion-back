@@ -1,5 +1,5 @@
 import { forwardRef, Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
+import { TenantTypeOrmModule } from 'src/common/tenant/tenant-typeorm.module';
 import { TripLogEntry } from './entities/trip-log-entry.entity';
 import { TripLogService } from './trip-log.service';
 import { TripLogController } from './trip-log.controller';
@@ -10,7 +10,7 @@ import { AlertsModule } from 'src/alerts/alerts.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([TripLogEntry]),
+    TenantTypeOrmModule.forFeature([TripLogEntry]),
     forwardRef(() => AuthModule),
     TripsModule,
     DriversModule,

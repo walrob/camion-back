@@ -1,5 +1,5 @@
 import { forwardRef, Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
+import { TenantTypeOrmModule } from 'src/common/tenant/tenant-typeorm.module';
 import { Alert } from './entities/alert.entity';
 import { AlertRuleConfig } from './entities/alert-rule-config.entity';
 import { AlertsService } from './alerts.service';
@@ -12,7 +12,7 @@ import { TripLogEntry } from 'src/trip-log/entities/trip-log-entry.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Alert, AlertRuleConfig, Truck, Trip, TripLogEntry]),
+    TenantTypeOrmModule.forFeature([Alert, AlertRuleConfig, Truck, Trip, TripLogEntry]),
     forwardRef(() => AuthModule),
   ],
   controllers: [AlertsController],

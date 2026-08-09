@@ -7,16 +7,21 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
+  Unique,
   UpdateDateColumn,
 } from 'typeorm';
 import { FuelType } from 'src/common/enums/fuel.enum';
 import { Truck } from 'src/fleet/entities/truck.entity';
 import { Driver } from 'src/drivers/entities/driver.entity';
+import { TenantEntity } from 'src/common/entities/tenant.entity';
 
+// clientId se scopea por empresa: aunque sea un UUID generado por la app, no
+// debe poder usarse el clientId de otra empresa para forzar una deduplicación.
 @Entity('fuel_records')
 @Index(['truckId'])
 @Index(['driverId'])
-export class FuelRecord {
+@Unique('UQ_fuel_records_company_client', ['companyId', 'clientId'])
+export class FuelRecord extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -96,6 +101,6 @@ export class FuelRecord {
   notes: string;
 
   // Idempotencia para sincronización offline del chofer.
-  @Column({ nullable: true, unique: true })
+  @Column({ nullable: true })
   clientId: string;
 }

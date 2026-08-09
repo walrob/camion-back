@@ -1,3 +1,4 @@
+import { TenantTypeOrmModule } from 'src/common/tenant/tenant-typeorm.module';
 import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Incident } from './entities/incident.entity';
@@ -8,13 +9,16 @@ import { IncidentsGateway } from './incidents.gateway';
 import { AuthModule } from 'src/auth/auth.module';
 import { DriversModule } from 'src/drivers/drivers.module';
 import { AlertsModule } from 'src/alerts/alerts.module';
+import { SequencesModule } from 'src/common/sequences/sequences.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Incident, IncidentEvent]),
+    TenantTypeOrmModule.forFeature([Incident, IncidentEvent]),
     forwardRef(() => AuthModule),
     DriversModule,
     AlertsModule,
+    // Correlativos por empresa para el código visible.
+    SequencesModule,
   ],
   controllers: [IncidentsController],
   providers: [IncidentsService, IncidentsGateway],

@@ -1,5 +1,5 @@
 import { forwardRef, Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
+import { TenantTypeOrmModule } from 'src/common/tenant/tenant-typeorm.module';
 import { DeviceToken } from './entities/device-token.entity';
 import { PushService } from './push.service';
 import { PushController } from './push.controller';
@@ -7,7 +7,7 @@ import { AuthModule } from 'src/auth/auth.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([DeviceToken]),
+    TenantTypeOrmModule.forFeature([DeviceToken]),
     forwardRef(() => AuthModule),
   ],
   controllers: [PushController],

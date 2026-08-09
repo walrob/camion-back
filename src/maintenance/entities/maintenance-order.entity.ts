@@ -10,9 +10,10 @@ import {
 } from 'typeorm';
 import { MaintenanceOrderStatus } from 'src/common/enums/maintenance.enum';
 import { Truck } from 'src/fleet/entities/truck.entity';
+import { TenantEntity } from 'src/common/entities/tenant.entity';
 
 @Entity('maintenance_orders')
-export class MaintenanceOrder {
+export class MaintenanceOrder extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 

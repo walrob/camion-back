@@ -11,10 +11,11 @@ import {
 } from 'typeorm';
 import { SettlementStatus } from 'src/common/enums/settlementStatus.enum';
 import { Trip } from 'src/trips/entities/trip.entity';
+import { TenantEntity } from 'src/common/entities/tenant.entity';
 
 @Entity('settlements')
 @Index(['tripId'])
-export class Settlement {
+export class Settlement extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 

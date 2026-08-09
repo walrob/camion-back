@@ -31,6 +31,9 @@ import { DriversService } from 'src/drivers/drivers.service';
 import { ChecklistsService } from 'src/checklists/checklists.service';
 import { EmploymentMovementsService } from 'src/hr/employment-movements.service';
 import { AlertsService } from 'src/alerts/alerts.service';
+import { SequencesService } from 'src/common/sequences/sequences.service';
+import { SequenceKey } from 'src/common/entities/company-sequence.entity';
+import { Driver } from 'src/drivers/entities/driver.entity';
 
 /** Normaliza una fecha a 'YYYY-MM-DD', que es como se guardan las del legajo. */
 const toDateStr = (value: string | Date | undefined): string | undefined => {
@@ -75,11 +78,14 @@ export class TripsService {
     private readonly checklistsService: ChecklistsService,
     private readonly movementsService: EmploymentMovementsService,
     private readonly alertsService: AlertsService,
+    private readonly sequences: SequencesService,
   ) {}
 
   async create(dto: CreateTripDto, user: ActiveUserInterface): Promise<Trip> {
     const { closeLeave, ...tripData } = dto;
-    await this.assertDriverAvailable(
+    // El viaje pertenece a la misma empresa que el chofer asignado. A partir de
+    // la fase 2 la empresa va a viajar en el token y esto se lee de `user`.
+    const driver = await this.assertDriverAvailable(
       dto.driverId,
       dto.plannedStartAt,
       closeLeave,
@@ -88,7 +94,8 @@ export class TripsService {
 
     const trip = this.tripsRepository.create({
       ...tripData,
-      code: await this.generateCode(),
+      companyId: driver.companyId,
+      code: await this.generateCode(driver.companyId),
       createdBy: user.id,
     });
     return this.tripsRepository.save(trip);
@@ -351,11 +358,11 @@ export class TripsService {
     plannedStartAt: string | Date | undefined,
     closeLeave: boolean | undefined,
     user: ActiveUserInterface,
-  ): Promise<void> {
+  ): Promise<Driver> {
     const driver = await this.driversService.findOne(driverId);
     const employee = driver.employee;
     // Legajos viejos sin historial no bloquean nada.
-    if (!employee) return;
+    if (!employee) return driver;
 
     const startDate = toDateStr(plannedStartAt) ?? toDateStr(new Date())!;
     const name = `${employee.firstName} ${employee.lastName}`;
@@ -405,7 +412,7 @@ export class TripsService {
         tripStart: startDate,
         closed: true,
       });
-      return;
+      return driver;
     }
 
     // El viaje arranca después de la licencia, pero hoy sigue sin estar
@@ -420,6 +427,8 @@ export class TripsService {
         closed: false,
       });
     }
+
+    return driver;
   }
 
   async start(
@@ -551,8 +560,12 @@ export class TripsService {
     return trip;
   }
 
-  private async generateCode(): Promise<string> {
-    const count = await this.tripsRepository.count();
-    return `V-${(count + 1).toString().padStart(5, '0')}`;
+  /**
+   * Correlativo por empresa. Antes se calculaba con `count()`, que con
+   * multi-empresa habría mezclado numeraciones y que además repetía códigos
+   * cuando había bajas lógicas o dos altas simultáneas.
+   */
+  private generateCode(companyId: string): Promise<string> {
+    return this.sequences.nextCode(companyId, SequenceKey.TRIP, 'V-');
   }
 }

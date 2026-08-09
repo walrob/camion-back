@@ -1,16 +1,22 @@
+import { JwtService } from '@nestjs/jwt';
 import { WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
 import { Server } from 'socket.io';
+import { TenantGateway } from 'src/common/tenant/tenant.gateway';
 
 @WebSocketGateway({ namespace: '/alerts', cors: { origin: '*' } })
-export class AlertsGateway {
+export class AlertsGateway extends TenantGateway {
   @WebSocketServer()
-  server: Server;
+  protected readonly server: Server;
 
-  emitNew(alert: any) {
-    this.server?.emit('alert:new', alert);
+  constructor(jwtService: JwtService) {
+    super(jwtService);
   }
 
-  emitUpdate(alert: any) {
-    this.server?.emit('alert:update', alert);
+  emitNew(alert: { companyId?: string }) {
+    this.emitirAEmpresa(alert?.companyId, 'alert:new', alert);
+  }
+
+  emitUpdate(alert: { companyId?: string }) {
+    this.emitirAEmpresa(alert?.companyId, 'alert:update', alert);
   }
 }

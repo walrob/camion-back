@@ -8,9 +8,10 @@ import {
 } from 'typeorm';
 import { Incident } from './incident.entity';
 import { User } from 'src/users/entities/user.entity';
+import { TenantEntity } from 'src/common/entities/tenant.entity';
 
 @Entity('incident_events')
-export class IncidentEvent {
+export class IncidentEvent extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 

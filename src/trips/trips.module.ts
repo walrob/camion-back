@@ -1,3 +1,4 @@
+import { TenantTypeOrmModule } from 'src/common/tenant/tenant-typeorm.module';
 import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Trip } from './entities/trip.entity';
@@ -9,10 +10,11 @@ import { DriversModule } from 'src/drivers/drivers.module';
 import { ChecklistsModule } from 'src/checklists/checklists.module';
 import { HrModule } from 'src/hr/hr.module';
 import { AlertsModule } from 'src/alerts/alerts.module';
+import { SequencesModule } from 'src/common/sequences/sequences.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Trip]),
+    TenantTypeOrmModule.forFeature([Trip]),
     forwardRef(() => AuthModule),
     FleetModule,
     DriversModule,
@@ -20,6 +22,8 @@ import { AlertsModule } from 'src/alerts/alerts.module';
     // Para validar la situación del legajo del chofer al asignarle un viaje.
     HrModule,
     AlertsModule,
+    // Correlativos por empresa para el código visible.
+    SequencesModule,
   ],
   controllers: [TripsController],
   providers: [TripsService],

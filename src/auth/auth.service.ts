@@ -35,7 +35,19 @@ export class AuthService {
 
     await this.usersService.update(user.id, { lastConnection: new Date() } as any);
 
-    const payload = { id: user.id, role: user.role, isDemo: user.isDemo };
+    if (!user.companyId) {
+      throw new UnauthorizedException('El usuario no tiene empresa asignada.');
+    }
+
+    // `companyId` es lo que después alimenta el contexto de empresa de cada
+    // request y, con él, el filtrado de todos los repositorios.
+    const payload = {
+      id: user.id,
+      companyId: user.companyId,
+      status: user.company?.status,
+      role: user.role,
+      isDemo: user.isDemo,
+    };
     const token = await this.jwtService.signAsync(payload);
     const decoded = this.jwtService.decode(token) as { exp: number };
 

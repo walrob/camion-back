@@ -1,20 +1,26 @@
+import { JwtService } from '@nestjs/jwt';
 import { WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
 import { Server } from 'socket.io';
+import { TenantGateway } from 'src/common/tenant/tenant.gateway';
 
 /**
  * Empuja incidentes en vivo al tablero del backoffice.
- * El front se suscribe al namespace /incidents.
+ * El front se suscribe al namespace /incidents con su token.
  */
 @WebSocketGateway({ namespace: '/incidents', cors: { origin: '*' } })
-export class IncidentsGateway {
+export class IncidentsGateway extends TenantGateway {
   @WebSocketServer()
-  server: Server;
+  protected readonly server: Server;
 
-  emitNew(incident: any) {
-    this.server?.emit('incident:new', incident);
+  constructor(jwtService: JwtService) {
+    super(jwtService);
   }
 
-  emitUpdate(incident: any) {
-    this.server?.emit('incident:update', incident);
+  emitNew(incident: { companyId?: string }) {
+    this.emitirAEmpresa(incident?.companyId, 'incident:new', incident);
+  }
+
+  emitUpdate(incident: { companyId?: string }) {
+    this.emitirAEmpresa(incident?.companyId, 'incident:update', incident);
   }
 }

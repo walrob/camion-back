@@ -12,11 +12,12 @@ import {
   AlertSourceType,
   AlertStatus,
 } from 'src/common/enums/alert.enum';
+import { TenantEntity } from 'src/common/entities/tenant.entity';
 
 @Entity('alerts')
 @Index(['status'])
 @Index(['level'])
-export class Alert {
+export class Alert extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 

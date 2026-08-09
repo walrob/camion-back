@@ -1,5 +1,5 @@
 import { forwardRef, Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
+import { TenantTypeOrmModule } from 'src/common/tenant/tenant-typeorm.module';
 import { OeaInspection } from './entities/oea-inspection.entity';
 import { OeaInspectionItem } from './entities/oea-inspection-item.entity';
 import { OeaService } from './oea.service';
@@ -9,7 +9,7 @@ import { DriversModule } from 'src/drivers/drivers.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([OeaInspection, OeaInspectionItem]),
+    TenantTypeOrmModule.forFeature([OeaInspection, OeaInspectionItem]),
     forwardRef(() => AuthModule),
     DriversModule,
   ],

@@ -14,7 +14,7 @@ import { CreateDriverDto } from './dto/create-driver.dto';
 import { UpdateDriverDto } from './dto/update-driver.dto';
 import { DriverStatus } from 'src/common/enums/driverStatus.enum';
 
-const activeUser = { id: 'user-1', role: 'admin' };
+const activeUser = { id: 'user-1', companyId: 'company-test', role: 'admin' };
 
 const mockRepo = () => ({
   findOne: jest.fn(),

@@ -1,5 +1,5 @@
 import { forwardRef, Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
+import { TenantTypeOrmModule } from 'src/common/tenant/tenant-typeorm.module';
 import { Employee } from './entities/employee.entity';
 import { Certification } from './entities/certification.entity';
 import { TruckAssignment } from './entities/truck-assignment.entity';
@@ -21,7 +21,7 @@ import { StorageModule } from 'src/common/storage/storage.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([
+    TenantTypeOrmModule.forFeature([
       Employee,
       Certification,
       TruckAssignment,

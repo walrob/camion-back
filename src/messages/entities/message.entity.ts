@@ -9,10 +9,11 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { User } from 'src/users/entities/user.entity';
+import { TenantEntity } from 'src/common/entities/tenant.entity';
 
 @Entity('messages')
 @Index(['fromUserId', 'toUserId'])
-export class Message {
+export class Message extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 

@@ -8,10 +8,11 @@ import { DriversService } from 'src/drivers/drivers.service';
 import { ChecklistsService } from 'src/checklists/checklists.service';
 import { EmploymentMovementsService } from 'src/hr/employment-movements.service';
 import { AlertsService } from 'src/alerts/alerts.service';
+import { SequencesService } from 'src/common/sequences/sequences.service';
 import { EmploymentStatus } from 'src/common/enums/employmentStatus.enum';
 import { EmploymentMovementType } from 'src/common/enums/employmentMovement.enum';
 
-const activeUser = { id: 'dispatcher-1', role: 'dispatcher' };
+const activeUser = { id: 'dispatcher-1', companyId: 'company-test', role: 'dispatcher' };
 
 const baseTrip = {
   truckId: 'truck-1',
@@ -27,6 +28,7 @@ describe('TripsService: asignación según la situación del legajo', () => {
   let driversService: { findOne: jest.Mock };
   let movementsService: { statusAt: jest.Mock; closeAt: jest.Mock };
   let alertsService: { createFromLeaveAssignment: jest.Mock };
+  let sequencesService: { nextCode: jest.Mock };
 
   /** Situación en la fecha del viaje y, opcionalmente, la de hoy. */
   const employmentIs = (
@@ -63,6 +65,7 @@ describe('TripsService: asignación según la situación del legajo', () => {
       closeAt: jest.fn().mockResolvedValue({}),
     };
     alertsService = { createFromLeaveAssignment: jest.fn() };
+    sequencesService = { nextCode: jest.fn().mockResolvedValue('V-00001') };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -73,6 +76,8 @@ describe('TripsService: asignación según la situación del legajo', () => {
         { provide: ChecklistsService, useValue: {} },
         { provide: EmploymentMovementsService, useValue: movementsService },
         { provide: AlertsService, useValue: alertsService },
+        // Correlativo del código de viaje, ahora por empresa.
+        { provide: SequencesService, useValue: sequencesService },
       ],
     }).compile();
 
