@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   PayloadTooLargeException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -14,6 +15,7 @@ import {
   StorageAddon,
   TECHO_STORAGE_ADDON,
 } from 'src/common/enums/storageAddon.enum';
+import { MaintenancePlanStatus } from 'src/common/enums/maintenance.enum';
 
 /** Límites de conteo que se validan antes de crear un recurso. */
 export type LimiteContable = 'alertRules' | 'maintenancePlans';
@@ -33,6 +35,8 @@ const GB = 1024 * 1024 * 1024;
  */
 @Injectable()
 export class LimitsService {
+  private readonly logger = new Logger(LimitsService.name);
+
   constructor(
     private readonly planContext: PlanContextService,
     @InjectRepository(AlertRuleConfig)
@@ -117,6 +121,68 @@ export class LimitsService {
         allowedRoles: roles,
       });
     }
+  }
+
+  /**
+   * Ajusta el excedente cuando una empresa baja de plan (riesgo R4.3).
+   *
+   * Si el plan nuevo permite 3 reglas y la empresa tenía 8 activas, sin esto
+   * quedaría por encima del tope de forma indefinida: no podría crear más, pero
+   * seguiría usando 8. El excedente se **desactiva por antigüedad** —se apagan
+   * las más nuevas y se conservan las más viejas, que son las que el cliente
+   * viene usando— y **nunca se borra nada**: si vuelve a subir de plan, alcanza
+   * con reactivarlas.
+   *
+   * Devuelve qué se desactivó, para poder notificárselo al cliente en lugar de
+   * que lo descubra solo.
+   */
+  async ajustarExcedentePorDowngrade(
+    companyId: string,
+  ): Promise<{ alertRules: string[]; maintenancePlans: string[] }> {
+    const limites = await this.limites(companyId);
+    const desactivado = { alertRules: [] as string[], maintenancePlans: [] as string[] };
+    if (!limites) return desactivado;
+
+    // Reglas de alerta: se apagan, no se borran.
+    const topeReglas = limites.alertRules;
+    if (topeReglas !== null && topeReglas !== undefined) {
+      const activas = await this.rulesRepository.find({
+        where: { companyId, enabled: true },
+        order: { createdAt: 'ASC' },
+      });
+      const sobran = activas.slice(topeReglas);
+      for (const regla of sobran) {
+        regla.enabled = false;
+        await this.rulesRepository.save(regla);
+        desactivado.alertRules.push(regla.key);
+      }
+    }
+
+    // Planes de mantenimiento: se pausan pasándolos a inactivos.
+    const topePlanes = limites.maintenancePlans;
+    if (topePlanes !== null && topePlanes !== undefined) {
+      const planes = await this.maintenancePlansRepository.find({
+        where: { companyId, status: MaintenancePlanStatus.ACTIVE },
+        order: { createdAt: 'ASC' },
+      });
+      const sobran = planes.slice(topePlanes);
+      for (const plan of sobran) {
+        plan.status = MaintenancePlanStatus.PAUSED;
+        await this.maintenancePlansRepository.save(plan);
+        desactivado.maintenancePlans.push(plan.name);
+      }
+    }
+
+    if (desactivado.alertRules.length || desactivado.maintenancePlans.length) {
+      this.logger.warn(
+        `Downgrade de ${companyId}: se desactivaron ` +
+          `${desactivado.alertRules.length} regla(s) de alerta y ` +
+          `${desactivado.maintenancePlans.length} plan(es) de mantenimiento ` +
+          'por exceder el tope del plan nuevo. Nada se borró.',
+      );
+    }
+
+    return desactivado;
   }
 
   // ── Almacenamiento ────────────────────────────────────────────────────────

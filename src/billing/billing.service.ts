@@ -13,9 +13,10 @@ import {
 } from 'src/common/enums/billing.enum';
 import { Subscription } from './entities/subscription.entity';
 import { CompanyAddon } from './entities/company-addon.entity';
-import { Addon } from './entities/addon.entity';
 import { VehicleBillingSnapshot } from './entities/vehicle-billing-snapshot.entity';
 import { CompanyPlanUpdate } from './entities/company-plan-update.entity';
+import { PlanContextService } from 'src/plans/plan-context.service';
+import { LimitsService } from 'src/plans/limits.service';
 import {
   AddonFacturable,
   Prepago,
@@ -48,6 +49,9 @@ export class BillingService {
     private readonly snapshotsRepository: Repository<VehicleBillingSnapshot>,
     @InjectRepository(CompanyPlanUpdate)
     private readonly updatesRepository: Repository<CompanyPlanUpdate>,
+    // Al aplicar un downgrade hay que releer el plan y recortar el excedente.
+    private readonly planContext: PlanContextService,
+    private readonly limitsService: LimitsService,
   ) {}
 
   // ─────────────────────────── Unidades facturables ──────────────────────────
@@ -489,6 +493,24 @@ export class BillingService {
         company.scheduledPlanId = null;
         company.scheduledEffectiveAt = null;
         await this.companiesRepository.save(company);
+
+        // El plan nuevo puede tener topes más chicos que lo que la empresa ya
+        // está usando (riesgo R4.3). Se desactiva el excedente por antigüedad y
+        // se deja constancia de qué se apagó: nada se borra, y si vuelve a subir
+        // de plan alcanza con reactivarlo.
+        this.planContext.invalidar(company.id);
+        const desactivado =
+          await this.limitsService.ajustarExcedentePorDowngrade(company.id);
+
+        const detalle = [
+          ...desactivado.alertRules.map((r) => `regla "${r}"`),
+          ...desactivado.maintenancePlans.map((p) => `plan "${p}"`),
+        ];
+        if (detalle.length) {
+          cambio.notes =
+            `${cambio.notes ?? ''} Desactivado por exceder el tope: ` +
+            `${detalle.join(', ')}.`;
+        }
       }
 
       if (cambio.changeType === PlanUpdateType.ADDON_REMOVED) {
@@ -542,6 +564,168 @@ export class BillingService {
     const m = String(d.getMonth() + 1).padStart(2, '0');
     const dd = String(d.getDate()).padStart(2, '0');
     return `${y}-${m}-${dd}`;
+  }
+
+  // ────────────────────────── Alta y baja de add-ons ─────────────────────────
+
+  /** Catálogo disponible para el plan de una empresa. */
+  async addonsDisponibles(companyId: string) {
+    const contexto = await this.planContext.obtener(companyId);
+    const planCode = contexto?.planCode;
+
+    const addons: {
+      id: string;
+      code: string;
+      name: string;
+      description: string | null;
+      monthlyPrice: string;
+      pricePerVehicle: string;
+      setupFee: string;
+      availableFromPlans: string | null;
+      isOneTime: number;
+    }[] = await this.companiesRepository.query(
+      'SELECT `id`,`code`,`name`,`description`,`monthlyPrice`,`pricePerVehicle`,' +
+        '`setupFee`,`availableFromPlans`,`isOneTime` FROM `addons` ' +
+        'WHERE `deletedAt` IS NULL AND `isPublic` = 1 ORDER BY `sortOrder`',
+    );
+
+    const contratados = await this.companyAddonsRepository.find({
+      where: { companyId, endedAt: IsNull() },
+    });
+    const contratadosPorId = new Set(contratados.map((c) => c.addonId));
+
+    return addons.map((a) => {
+      const planes = a.availableFromPlans
+        ? (JSON.parse(a.availableFromPlans) as string[])
+        : [];
+      return {
+        ...a,
+        monthlyPrice: Number(a.monthlyPrice),
+        pricePerVehicle: Number(a.pricePerVehicle),
+        setupFee: Number(a.setupFee),
+        availableFromPlans: planes,
+        isOneTime: !!a.isOneTime,
+        contratado: contratadosPorId.has(a.id),
+        // Lista vacía = disponible en todos los planes.
+        disponible: planes.length === 0 || (!!planCode && planes.includes(planCode)),
+      };
+    });
+  }
+
+  /**
+   * Contrata un add-on. Se aplica en el acto y se prorratea la diferencia,
+   * igual que un upgrade de plan (§6.4).
+   */
+  async contratarAddon(
+    companyId: string,
+    code: string,
+    quantity = 1,
+    usuarioId?: string,
+  ) {
+    const disponibles = await this.addonsDisponibles(companyId);
+    const addon = disponibles.find((a) => a.code === code);
+
+    if (!addon) throw new BadRequestException('Add-on inexistente.');
+    if (!addon.disponible) {
+      throw new BadRequestException(
+        `El add-on "${addon.name}" no está disponible para tu plan.`,
+      );
+    }
+    if (addon.contratado) {
+      throw new BadRequestException('El add-on ya está contratado.');
+    }
+
+    const precioAnterior = (await this.cotizar(companyId)).desglose.amount;
+
+    const hoy = new Date();
+    await this.companyAddonsRepository.save(
+      this.companyAddonsRepository.create({
+        companyId,
+        addonId: addon.id,
+        quantity,
+        startedAt: this.soloFecha(hoy) as unknown as Date,
+        createdBy: usuarioId,
+      }),
+    );
+
+    // El add-on puede aportar features: hay que releer el plan efectivo.
+    this.planContext.invalidar(companyId);
+
+    await this.updatesRepository.save(
+      this.updatesRepository.create({
+        companyId,
+        changeType: PlanUpdateType.ADDON_ADDED,
+        status: PlanUpdateStatus.APPLIED,
+        toCode: addon.code,
+        effectiveAt: hoy,
+        appliedAt: hoy,
+        createdBy: usuarioId,
+      }),
+    );
+
+    const precioNuevo = (await this.cotizar(companyId)).desglose.amount;
+    const company = await this.companiesRepository.findOne({
+      where: { id: companyId },
+    });
+    const { periodStart, periodEnd } = this.periodoDe(
+      hoy,
+      company?.billingDay ?? 1,
+    );
+
+    const prorrateo = await this.emitirProrrateo({
+      companyId,
+      precioAnterior,
+      precioNuevo,
+      fechaCambio: hoy,
+      periodStart,
+      periodEnd,
+      concepto: `Alta de ${addon.name}`,
+    });
+
+    return { addon: addon.code, prorrateo };
+  }
+
+  /**
+   * Da de baja un add-on **a partir de la próxima renovación** (§6.4).
+   *
+   * No se corta en el acto para que nadie contrate y cancele dentro del mismo
+   * período; y como ya se cobró el mes, seguir usándolo hasta el cierre es lo
+   * que corresponde.
+   */
+  async darDeBajaAddon(companyId: string, code: string, usuarioId?: string) {
+    const contratados = await this.companyAddonsRepository.find({
+      where: { companyId, endedAt: IsNull() },
+      relations: ['addon'],
+    });
+    const contratado = contratados.find((c) => c.addon?.code === code);
+    if (!contratado) {
+      throw new BadRequestException('El add-on no está contratado.');
+    }
+
+    const company = await this.companiesRepository.findOne({
+      where: { id: companyId },
+    });
+    const { periodEnd } = this.periodoDe(new Date(), company?.billingDay ?? 1);
+    const efectivoEl = new Date(periodEnd);
+    efectivoEl.setDate(efectivoEl.getDate() + 1);
+
+    contratado.scheduledEndAt = this.soloFecha(efectivoEl) as unknown as Date;
+    if (usuarioId) contratado.updatedBy = usuarioId;
+    await this.companyAddonsRepository.save(contratado);
+
+    await this.updatesRepository.save(
+      this.updatesRepository.create({
+        companyId,
+        changeType: PlanUpdateType.ADDON_REMOVED,
+        status: PlanUpdateStatus.PENDING,
+        fromCode: code,
+        effectiveAt: efectivoEl,
+        createdBy: usuarioId,
+        notes: 'Baja agendada para la próxima renovación (§6.4).',
+      }),
+    );
+
+    return { addon: code, efectivoEl };
   }
 
   /** Períodos facturados de una empresa, del más reciente al más viejo. */

@@ -24,6 +24,8 @@ import { Auth } from 'src/auth/decorators/auth.decorator';
 import { Role } from 'src/common/enums/role.enum';
 import { ActiveUser } from 'src/common/decorators/active-user.decorator';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
+import { Feature } from 'src/common/enums/feature.enum';
+import { RequiresFeature } from 'src/auth/decorators/requires-feature.decorator';
 
 @ApiTags('Trips')
 @ApiBearerAuth()
@@ -75,6 +77,9 @@ export class TripsController {
   }
 
   @Get('export')
+  // La exportación a Excel es de Operación en adelante: en Control el
+  // módulo se ve pero no se puede bajar el listado (MODELO-COMERCIAL §4.1).
+  @RequiresFeature(Feature.EXPORT_EXCEL)
   @Auth(Role.ADMIN, Role.DISPATCHER, Role.MANAGER, Role.AUDITOR)
   @ApiQuery({ name: 'search', required: false })
   @ApiQuery({ name: 'status', required: false, enum: TripStatus })

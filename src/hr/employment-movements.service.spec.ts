@@ -8,6 +8,7 @@ import { Trip } from 'src/trips/entities/trip.entity';
 import { EmploymentMovementType } from 'src/common/enums/employmentMovement.enum';
 import { EmploymentStatus } from 'src/common/enums/employmentStatus.enum';
 import { TripStatus } from 'src/common/enums/tripStatus.enum';
+import { StorageService } from 'src/common/storage/storage.service';
 
 const activeUser = { id: 'hr-1', companyId: 'company-test', role: 'hr' };
 
@@ -43,6 +44,8 @@ describe('EmploymentMovementsService.computeStatus', () => {
         { provide: getRepositoryToken(Employee), useValue: {} },
         { provide: getRepositoryToken(Driver), useValue: {} },
         { provide: getRepositoryToken(Trip), useValue: {} },
+        // El servicio guarda el archivo de respaldo del movimiento.
+        { provide: StorageService, useValue: { uploadFile: jest.fn(), getPresignedUrl: jest.fn() } },
       ],
     }).compile();
 
@@ -214,6 +217,7 @@ describe('EmploymentMovementsService.create: viajes sin cerrar', () => {
         { provide: getRepositoryToken(Employee), useValue: employeesRepo },
         { provide: getRepositoryToken(Driver), useValue: driversRepo },
         { provide: getRepositoryToken(Trip), useValue: tripsRepo },
+        { provide: StorageService, useValue: { uploadFile: jest.fn(), getPresignedUrl: jest.fn() } },
       ],
     }).compile();
 

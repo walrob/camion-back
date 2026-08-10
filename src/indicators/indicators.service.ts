@@ -11,6 +11,7 @@ import { IncidentType } from 'src/common/enums/incident.enum';
 import { TruckStatus } from 'src/common/enums/truckStatus.enum';
 import { IndicatorFilterDto } from './dto/indicator-filter.dto';
 import { ExpenseGroup } from './dto/expense-group-filter.dto';
+import { getRetentionCutoff } from 'src/common/tenant/tenant-context';
 import {
   DateWindowOptions,
   resolveDateWindow,
@@ -189,6 +190,43 @@ export class IndicatorsService {
       expenseByTruck: byTruck,
       expenseByDriver: byDriver,
       breakdownsByTruck: breakdowns,
+      // Riesgo R4.1: la retención del plan recorta el histórico en silencio. Un
+      // total que en realidad cubre 6 meses y se presenta como "el total" es un
+      // número equivocado, no un número acotado. El reporte declara siempre qué
+      // ventana cubrió para que el front lo muestre en el encabezado.
+      coverage: this.coberturaEfectiva(f),
+    };
+  }
+
+  /**
+   * Ventana que realmente abarcan los números, y si la recortó el plan.
+   *
+   * Se calcula sobre el corte de retención vigente en el contexto del request,
+   * que es el mismo que aplica el repositorio: si acá dijera otra cosa que allá,
+   * el encabezado mentiría.
+   */
+  private coberturaEfectiva(f: IndicatorFilterDto): {
+    from: string | null;
+    to: string | null;
+    retentionCutoff: string | null;
+    truncatedByPlan: boolean;
+  } {
+    const corte = getRetentionCutoff();
+    const desdePedido = f.from ? new Date(f.from) : null;
+
+    const truncado = !!corte && (!desdePedido || desdePedido < corte);
+    const soloFecha = (d: Date | null) =>
+      d ? d.toISOString().slice(0, 10) : null;
+
+    return {
+      // El `from` efectivo es el más reciente entre lo pedido y el corte.
+      from:
+        truncado && corte
+          ? soloFecha(corte)
+          : (f.from ?? null),
+      to: f.to ?? null,
+      retentionCutoff: soloFecha(corte ?? null),
+      truncatedByPlan: truncado,
     };
   }
 

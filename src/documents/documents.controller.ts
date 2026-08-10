@@ -27,6 +27,8 @@ import { Role } from 'src/common/enums/role.enum';
 import { UploadFile } from 'src/common/decorators/upload-file.decorator';
 import { ActiveUser } from 'src/common/decorators/active-user.decorator';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
+import { Feature } from 'src/common/enums/feature.enum';
+import { RequiresFeature } from 'src/auth/decorators/requires-feature.decorator';
 
 @ApiTags('Documents')
 @ApiBearerAuth()
@@ -67,6 +69,9 @@ export class DocumentsController {
   }
 
   @Get('expiring/export')
+  // La exportación a Excel es de Operación en adelante: en Control el
+  // módulo se ve pero no se puede bajar el listado (MODELO-COMERCIAL §4.1).
+  @RequiresFeature(Feature.EXPORT_EXCEL)
   @Auth(Role.ADMIN, Role.MAINTENANCE, Role.DISPATCHER, Role.MANAGER)
   @ApiQuery({ name: 'days', required: false, type: Number })
   async exportExpiring(

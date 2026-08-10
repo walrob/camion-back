@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Post,
@@ -47,6 +48,47 @@ export class BillingController {
     @ActiveUser() user: ActiveUserInterface,
   ) {
     return this.billing.cambiarPlan(user.companyId, body.planCode, user.id);
+  }
+
+  @Get('addons')
+  @Auth(Role.ADMIN, Role.MANAGER)
+  @ApiOperation({
+    summary: 'Catálogo de add-ons, con cuáles ya están contratados y cuáles ' +
+      'están disponibles para el plan actual.',
+  })
+  addons(@ActiveUser() user: ActiveUserInterface) {
+    return this.billing.addonsDisponibles(user.companyId);
+  }
+
+  @Post('addons')
+  @Auth(Role.ADMIN)
+  @ApiOperation({
+    summary: 'Contrata un add-on. Se aplica al instante y se prorratea.',
+  })
+  contratarAddon(
+    @Body() body: { code: string; quantity?: number },
+    @ActiveUser() user: ActiveUserInterface,
+  ) {
+    return this.billing.contratarAddon(
+      user.companyId,
+      body.code,
+      body.quantity ?? 1,
+      user.id,
+    );
+  }
+
+  @Delete('addons/:code')
+  @Auth(Role.ADMIN)
+  @ApiOperation({
+    summary:
+      'Da de baja un add-on a partir de la próxima renovación: el período en ' +
+      'curso ya está cobrado y se sigue usando hasta el cierre.',
+  })
+  darDeBajaAddon(
+    @Param('code') code: string,
+    @ActiveUser() user: ActiveUserInterface,
+  ) {
+    return this.billing.darDeBajaAddon(user.companyId, code, user.id);
   }
 
   @Get('snapshot')
