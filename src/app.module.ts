@@ -27,6 +27,7 @@ import { FuelModule } from './fuel/fuel.module';
 import { OeaModule } from './oea/oea.module';
 import { CompaniesModule } from './companies/companies.module';
 import { PlansModule } from './plans/plans.module';
+import { BillingModule } from './billing/billing.module';
 import { TenantModule } from './common/tenant/tenant.module';
 import { TenantContextMiddleware } from './common/tenant/tenant-context.middleware';
 
@@ -110,6 +111,7 @@ import { TenantContextMiddleware } from './common/tenant/tenant-context.middlewa
     PushModule,
     FuelModule,
     OeaModule,
+    BillingModule,
   ],
   controllers: [],
   providers: [],

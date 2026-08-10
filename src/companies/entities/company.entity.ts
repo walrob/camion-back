@@ -125,6 +125,13 @@ export class Company {
   @Column('int', { default: 1 })
   billingDay: number;
 
+  /**
+   * Modalidad de prepago: define el descuento del §7.4 (anual −15 %,
+   * bianual −22 %). Es la única palanca de descuento sobre el recurrente.
+   */
+  @Column({ default: 'mensual' })
+  prepay: string;
+
   // --- Consumo ---
 
   /**

@@ -66,11 +66,16 @@ export class PlanContextService {
         where: { id: company.planId },
       });
       if (plan) {
+        // Las features efectivas son `plan ∪ add-ons contratados`. Es lo que
+        // permite que API + Webhooks sea add-on en Gestión e incluido en
+        // Corporate sin que el gating tenga que saber de esa distinción.
+        const deAddons = await this.featuresDeAddons(companyId);
+
         valor = {
           planId: plan.id,
           planCode: plan.code,
           planName: plan.name,
-          features: plan.features ?? [],
+          features: [...new Set([...(plan.features ?? []), ...deAddons])],
           limits: plan.limits ?? null,
         };
       }
@@ -78,6 +83,38 @@ export class PlanContextService {
 
     this.cache.set(companyId, { valor, expiraEn: ahora + TTL_MS });
     return valor;
+  }
+
+  /**
+   * Features que aportan los add-ons vigentes de la empresa.
+   *
+   * Se resuelve con SQL crudo y no por repositorio a propósito: este servicio lo
+   * consume el `FeatureGuard`, que es global, y no puede depender del módulo de
+   * facturación sin crear un ciclo de dependencias entre planes y billing.
+   */
+  private async featuresDeAddons(companyId: string): Promise<string[]> {
+    const filas: { features: string | null }[] =
+      await this.plansRepository.query(
+        'SELECT a.`features` AS features ' +
+          'FROM `company_addons` ca ' +
+          'JOIN `addons` a ON a.`id` = ca.`addonId` ' +
+          'WHERE ca.`companyId` = ? ' +
+          '  AND ca.`deletedAt` IS NULL ' +
+          '  AND ca.`startedAt` <= CURDATE() ' +
+          '  AND (ca.`endedAt` IS NULL OR ca.`endedAt` > CURDATE())',
+        [companyId],
+      );
+
+    const features: string[] = [];
+    for (const f of filas) {
+      if (!f.features) continue;
+      try {
+        features.push(...(JSON.parse(f.features) as string[]));
+      } catch {
+        // Catálogo corrupto: se ignora esa fila en vez de tumbar el guard.
+      }
+    }
+    return features;
   }
 
   async tieneFeature(companyId: string, feature: string): Promise<boolean> {

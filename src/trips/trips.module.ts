@@ -11,10 +11,11 @@ import { ChecklistsModule } from 'src/checklists/checklists.module';
 import { HrModule } from 'src/hr/hr.module';
 import { AlertsModule } from 'src/alerts/alerts.module';
 import { SequencesModule } from 'src/common/sequences/sequences.module';
+import { Trailer } from 'src/fleet/entities/trailer.entity';
 
 @Module({
   imports: [
-    TenantTypeOrmModule.forFeature([Trip]),
+    TenantTypeOrmModule.forFeature([Trip, Trailer]),
     forwardRef(() => AuthModule),
     FleetModule,
     DriversModule,

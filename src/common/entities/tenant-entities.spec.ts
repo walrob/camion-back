@@ -24,6 +24,7 @@ import { TenantEntity } from './tenant.entity';
 const CATALOGO_GLOBAL: Record<string, string> = {
   Company: 'Es el tenant en sí: es la raíz a la que apuntan las demás.',
   Plan: 'Catálogo comercial de planes, común a todas las empresas.',
+  Addon: 'Catálogo comercial de add-ons. Lo contratado por cada empresa vive en CompanyAddon, que sí es de tenant.',
 };
 
 describe('Modelo multi-empresa', () => {

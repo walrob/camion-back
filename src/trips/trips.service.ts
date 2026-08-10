@@ -34,6 +34,8 @@ import { AlertsService } from 'src/alerts/alerts.service';
 import { SequencesService } from 'src/common/sequences/sequences.service';
 import { SequenceKey } from 'src/common/entities/company-sequence.entity';
 import { Driver } from 'src/drivers/entities/driver.entity';
+import { Trailer } from 'src/fleet/entities/trailer.entity';
+import { BillingStatus } from 'src/common/enums/billing.enum';
 
 /** Normaliza una fecha a 'YYYY-MM-DD', que es como se guardan las del legajo. */
 const toDateStr = (value: string | Date | undefined): string | undefined => {
@@ -73,6 +75,8 @@ export class TripsService {
   constructor(
     @InjectRepository(Trip)
     private readonly tripsRepository: Repository<Trip>,
+    @InjectRepository(Trailer)
+    private readonly trailersRepository: Repository<Trailer>,
     private readonly trucksService: TrucksService,
     private readonly driversService: DriversService,
     private readonly checklistsService: ChecklistsService,
@@ -91,6 +95,11 @@ export class TripsService {
       closeLeave,
       user,
     );
+
+    // Una unidad en modo inactivo factura al 30 % justamente porque NO opera
+    // (MODELO-COMERCIAL §2.3). Si se le pudiera asignar un viaje, el modo
+    // inactivo pasaría a ser un descuento encubierto.
+    await this.assertUnidadesFacturables(dto.truckId, dto.trailerId);
 
     const trip = this.tripsRepository.create({
       ...tripData,
@@ -565,6 +574,40 @@ export class TripsService {
    * multi-empresa habría mezclado numeraciones y que además repetía códigos
    * cuando había bajas lógicas o dos altas simultáneas.
    */
+  /**
+   * Rechaza asignar un viaje a una unidad que no está activa a los efectos de
+   * la facturación.
+   *
+   * El mensaje nombra la unidad y explica cómo destrabarlo: un bloqueo sin
+   * salida clara termina en un llamado a soporte.
+   */
+  private async assertUnidadesFacturables(
+    truckId?: string,
+    trailerId?: string,
+  ): Promise<void> {
+    if (truckId) {
+      const truck = await this.trucksService.findOne(truckId);
+      if (truck && truck.billingStatus !== BillingStatus.ACTIVE) {
+        throw new BadRequestException(
+          `El camión ${truck.plate} está fuera de servicio y no puede recibir ` +
+            'viajes. Reactivalo desde Flota para volver a operarlo.',
+        );
+      }
+    }
+
+    if (trailerId) {
+      const trailer = await this.trailersRepository.findOne({
+        where: { id: trailerId },
+      });
+      if (trailer && trailer.billingStatus !== BillingStatus.ACTIVE) {
+        throw new BadRequestException(
+          `El acoplado ${trailer.plate} está fuera de servicio y no puede ` +
+            'asignarse. Reactivalo desde Flota para volver a operarlo.',
+        );
+      }
+    }
+  }
+
   private generateCode(companyId: string): Promise<string> {
     return this.sequences.nextCode(companyId, SequenceKey.TRIP, 'V-');
   }

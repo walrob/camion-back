@@ -10,6 +10,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { TruckStatus } from 'src/common/enums/truckStatus.enum';
+import { BillingStatus } from 'src/common/enums/billing.enum';
 import { Fleet } from './fleet.entity';
 import { TenantEntity } from 'src/common/entities/tenant.entity';
 
@@ -75,4 +76,21 @@ export class Truck extends TenantEntity {
   @ManyToOne(() => Fleet, (fleet) => fleet.trucks, { nullable: true })
   @JoinColumn({ name: 'fleetId' })
   fleet: Fleet;
+  /**
+   * Situación a los efectos de la FACTURACIÓN, independiente del estado
+   * operativo: un camión en taller sigue facturando al 100 % porque sigue
+   * siendo parte de la flota administrada. El modo inactivo factura al 30 %
+   * y requiere 30 días corridos fuera de servicio (MODELO-COMERCIAL §2.3).
+   */
+  @Column({
+    type: 'enum',
+    enum: BillingStatus,
+    default: BillingStatus.ACTIVE,
+  })
+  billingStatus: BillingStatus;
+
+  /** Desde cuándo está en modo inactivo. Auditable ante un reclamo. */
+  @Column({ type: 'date', nullable: true })
+  billingInactiveSince: Date | null;
+
 }
