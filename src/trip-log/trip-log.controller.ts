@@ -13,11 +13,14 @@ import { CreateTripLogEntryDto } from './dto/create-trip-log-entry.dto';
 import { UpdateTripLogEntryDto } from './dto/update-trip-log-entry.dto';
 import { Auth } from 'src/auth/decorators/auth.decorator';
 import { Role } from 'src/common/enums/role.enum';
+import { Feature } from 'src/common/enums/feature.enum';
+import { RequiresFeature } from 'src/auth/decorators/requires-feature.decorator';
 import { ActiveUser } from 'src/common/decorators/active-user.decorator';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
 
 @ApiTags('Trip Log (Bitácora)')
 @ApiBearerAuth()
+@RequiresFeature(Feature.TRIP_LOG)
 @Controller('trip-log')
 export class TripLogController {
   constructor(private readonly tripLogService: TripLogService) {}

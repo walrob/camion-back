@@ -4,11 +4,14 @@ import { JwtModule } from '@nestjs/jwt';
 import { UsersModule } from 'src/users/users.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { CompaniesModule } from 'src/companies/companies.module';
 
 @Module({
   imports: [
     forwardRef(() => UsersModule),
     ConfigModule,
+    // `GET /auth/session` devuelve la empresa junto con su plan.
+    CompaniesModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({

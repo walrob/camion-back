@@ -18,11 +18,14 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
 import { Auth } from 'src/auth/decorators/auth.decorator';
 import { Role } from 'src/common/enums/role.enum';
+import { Feature } from 'src/common/enums/feature.enum';
+import { RequiresFeature } from 'src/auth/decorators/requires-feature.decorator';
 import { ActiveUser } from 'src/common/decorators/active-user.decorator';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
 
 @ApiTags('Maintenance')
 @ApiBearerAuth()
+@RequiresFeature(Feature.MAINTENANCE)
 @Controller('maintenance')
 export class MaintenanceController {
   constructor(private readonly maintenanceService: MaintenanceService) {}

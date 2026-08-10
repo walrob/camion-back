@@ -21,11 +21,14 @@ import { EmployeePosition } from 'src/common/enums/employeePosition.enum';
 import { EmploymentStatus } from 'src/common/enums/employmentStatus.enum';
 import { Auth } from 'src/auth/decorators/auth.decorator';
 import { Role } from 'src/common/enums/role.enum';
+import { Feature } from 'src/common/enums/feature.enum';
+import { RequiresFeature } from 'src/auth/decorators/requires-feature.decorator';
 import { ActiveUser } from 'src/common/decorators/active-user.decorator';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
 
 @ApiTags('HR - Employees')
 @ApiBearerAuth()
+@RequiresFeature(Feature.HR_BASIC)
 @Controller('hr/employees')
 export class EmployeesController {
   constructor(

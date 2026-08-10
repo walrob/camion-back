@@ -1,11 +1,14 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Post,
   Request,
 } from '@nestjs/common';
+import { ActiveUser } from '../common/decorators/active-user.decorator';
+import { ActiveUserInterface } from '../common/interfaces/active-user.interface';
 import { AuthService } from './auth.service';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { PasswordDto } from './dto/password.dto';
@@ -24,6 +27,21 @@ export class AuthController {
   @Post('login')
   login(@Body() loginDto: LoginDto) {
     return this.authService.validateUser(loginDto);
+  }
+
+  /**
+   * Situación comercial vigente de la empresa del usuario.
+   *
+   * El front la consulta al arrancar y cada tanto. Es un endpoint aparte del
+   * login a propósito: el plan **no** viaja en el JWT (dura un día), así que un
+   * cambio de plan tiene que poder reflejarse sin volver a loguearse.
+   */
+  @ApiBearerAuth()
+  @Auth()
+  @AllowDemo()
+  @Get('session')
+  session(@ActiveUser() user: ActiveUserInterface) {
+    return this.authService.getSession(user);
   }
 
   @ApiBearerAuth()

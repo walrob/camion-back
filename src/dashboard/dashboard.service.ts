@@ -11,6 +11,8 @@ import { TripStatus } from 'src/common/enums/tripStatus.enum';
 import { TripLogType } from 'src/common/enums/tripLogType.enum';
 import { AlertStatus } from 'src/common/enums/alert.enum';
 import { MaintenanceService } from 'src/maintenance/maintenance.service';
+import { PlanContextService } from 'src/plans/plan-context.service';
+import { Feature } from 'src/common/enums/feature.enum';
 
 @Injectable()
 export class DashboardService {
@@ -26,9 +28,32 @@ export class DashboardService {
     @InjectRepository(Alert)
     private readonly alertsRepository: Repository<Alert>,
     private readonly maintenanceService: MaintenanceService,
+    private readonly planContext: PlanContextService,
   ) {}
 
-  async getOverview(range: 'today' | '7d' | '30d' = '7d') {
+  /**
+   * Resumen gerencial, recortado a lo que incluye el plan de la empresa.
+   *
+   * El gating de los controladores no alcanza para el panel: acá los datos no
+   * llegan por el endpoint del módulo sino agregados. Sin este recorte, una
+   * empresa en plan Control vería el gasto del día (bitácora) y los próximos
+   * servicios (mantenimiento), que son de Operación — riesgo R3.1 del plan SaaS.
+   *
+   * Las métricas que el plan no incluye **no se calculan**: además de no
+   * filtrarse, ahorran la consulta.
+   */
+  async getOverview(
+    range: 'today' | '7d' | '30d' = '7d',
+    companyId?: string,
+  ) {
+    const features =
+      (companyId ? await this.planContext.obtener(companyId) : null)?.features ??
+      [];
+    const tiene = (f: Feature) => features.includes(f);
+
+    const conBitacora = tiene(Feature.TRIP_LOG);
+    const conMantenimiento = tiene(Feature.MAINTENANCE);
+
     const [
       trucksByStatus,
       incidentsBySeverity,
@@ -43,14 +68,16 @@ export class DashboardService {
       this.groupCount(this.trucksRepository, 'status'),
       this.incidentsBySeverity(),
       this.alertsByLevel(),
-      this.todayExpenses(),
+      conBitacora ? this.todayExpenses() : Promise.resolve(null),
       this.delayedTrips(),
       this.driversWithNews(),
-      this.maintenanceService.upcoming(),
+      conMantenimiento
+        ? this.maintenanceService.upcoming()
+        : Promise.resolve(null),
       this.incidentsRepository.count({
         where: { status: Not(IncidentStatus.RESOLVED) },
       }),
-      this.buildTrends(range),
+      this.buildTrends(range, conBitacora),
     ]);
 
     return {
@@ -64,10 +91,13 @@ export class DashboardService {
         active: Object.values(activeAlertsByLevel).reduce((a, b) => a + b, 0),
         byLevel: activeAlertsByLevel,
       },
+      // `null` significa "no incluido en el plan": el front lo distingue de 0 y
+      // muestra la tarjeta con candado en vez de un importe en cero, que sería
+      // engañoso.
       todayExpenses,
       delayedTrips,
       driversWithNews,
-      upcomingMaintenance: upcoming.length,
+      upcomingMaintenance: upcoming ? upcoming.length : null,
       trends,
     };
   }
@@ -77,7 +107,10 @@ export class DashboardService {
    * período actual, el del período inmediatamente anterior de igual duración
    * (para calcular delta%) y la serie diaria (sparkline) de largo fijo.
    */
-  private async buildTrends(range: 'today' | '7d' | '30d') {
+  private async buildTrends(
+    range: 'today' | '7d' | '30d',
+    conBitacora = true,
+  ) {
     const days = range === 'today' ? 1 : range === '30d' ? 30 : 7;
 
     const now = new Date();
@@ -101,29 +134,34 @@ export class DashboardService {
       incidentsPrev,
     ] = await Promise.all([
       // expenses: SUM(amount) excluyendo CASH_ADVANCE, por occurredAt.
-      this.dailySeries(
-        this.entriesRepository,
-        'e.occurredAt',
-        'COALESCE(SUM(e.amount), 0)',
-        start,
-        now,
-        days,
-        (qb) =>
-          qb.andWhere('e.type != :advance', {
-            advance: TripLogType.CASH_ADVANCE,
-          }),
-      ),
-      this.aggWindow(
-        this.entriesRepository,
-        'e.occurredAt',
-        'COALESCE(SUM(e.amount), 0)',
-        prevStart,
-        prevEnd,
-        (qb) =>
-          qb.andWhere('e.type != :advance', {
-            advance: TripLogType.CASH_ADVANCE,
-          }),
-      ),
+      // Sólo si el plan incluye la bitácora (ver getOverview).
+      conBitacora
+        ? this.dailySeries(
+            this.entriesRepository,
+            'e.occurredAt',
+            'COALESCE(SUM(e.amount), 0)',
+            start,
+            now,
+            days,
+            (qb) =>
+              qb.andWhere('e.type != :advance', {
+                advance: TripLogType.CASH_ADVANCE,
+              }),
+          )
+        : Promise.resolve([] as number[]),
+      conBitacora
+        ? this.aggWindow(
+            this.entriesRepository,
+            'e.occurredAt',
+            'COALESCE(SUM(e.amount), 0)',
+            prevStart,
+            prevEnd,
+            (qb) =>
+              qb.andWhere('e.type != :advance', {
+                advance: TripLogType.CASH_ADVANCE,
+              }),
+          )
+        : Promise.resolve(0),
       // tripsFinished: COUNT(Trip) status=finished, por finishedAt.
       this.dailySeries(
         this.tripsRepository,
@@ -169,11 +207,14 @@ export class DashboardService {
     const sum = (s: number[]) => s.reduce((a, b) => a + b, 0);
 
     return {
-      expenses: {
-        value: Math.round(sum(expensesSeries) * 100) / 100,
-        previousValue: expensesPrev,
-        series: expensesSeries,
-      },
+      // `null` = no incluido en el plan (ver getOverview).
+      expenses: conBitacora
+        ? {
+            value: Math.round(sum(expensesSeries) * 100) / 100,
+            previousValue: expensesPrev,
+            series: expensesSeries,
+          }
+        : null,
       tripsFinished: {
         value: sum(tripsSeries),
         previousValue: tripsPrev,

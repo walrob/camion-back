@@ -11,11 +11,14 @@ import { AssignmentsService } from './assignments.service';
 import { CreateAssignmentDto } from './dto/create-assignment.dto';
 import { Auth } from 'src/auth/decorators/auth.decorator';
 import { Role } from 'src/common/enums/role.enum';
+import { Feature } from 'src/common/enums/feature.enum';
+import { RequiresFeature } from 'src/auth/decorators/requires-feature.decorator';
 import { ActiveUser } from 'src/common/decorators/active-user.decorator';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
 
 @ApiTags('HR - Assignments')
 @ApiBearerAuth()
+@RequiresFeature(Feature.HR_BASIC)
 @Controller('hr/assignments')
 export class AssignmentsController {
   constructor(private readonly assignmentsService: AssignmentsService) {}

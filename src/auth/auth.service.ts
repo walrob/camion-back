@@ -8,7 +8,11 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import * as bcryptjs from 'bcryptjs';
+import { Company } from 'src/companies/entities/company.entity';
+import { PlanContextService } from 'src/plans/plan-context.service';
 import { UsersService } from 'src/users/users.service';
 import { Role } from 'src/common/enums/role.enum';
 import { PasswordDto } from './dto/password.dto';
@@ -22,7 +26,43 @@ export class AuthService {
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
+    @InjectRepository(Company)
+    private readonly companiesRepository: Repository<Company>,
+    private readonly planContext: PlanContextService,
   ) {}
+
+  /**
+   * Empresa, plan, features y límites vigentes del usuario.
+   *
+   * Se resuelve contra la base en cada llamada (con la caché corta de
+   * `PlanContextService`), no desde el token: es lo que permite que un cambio de
+   * plan se refleje sin que el usuario tenga que volver a entrar.
+   */
+  async getSession(user: ActiveUserInterface) {
+    const company = await this.companiesRepository.findOne({
+      where: { id: user.companyId },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        status: true,
+        trialEndsAt: true,
+        logoUrl: true,
+        primaryColor: true,
+      },
+    });
+
+    const plan = await this.planContext.obtener(user.companyId);
+
+    return {
+      company,
+      plan: plan
+        ? { code: plan.planCode, name: plan.planName }
+        : null,
+      features: plan?.features ?? [],
+      limits: plan?.limits ?? null,
+    };
+  }
 
   async validateUser({ email, password }: LoginDto) {
     const user = await this.usersService.findOneByEmailWithPassword(email);

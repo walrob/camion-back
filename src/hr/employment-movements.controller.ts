@@ -14,12 +14,15 @@ import { CreateMovementDto } from './dto/create-movement.dto';
 import { UpdateMovementDto } from './dto/update-movement.dto';
 import { Auth } from 'src/auth/decorators/auth.decorator';
 import { Role } from 'src/common/enums/role.enum';
+import { Feature } from 'src/common/enums/feature.enum';
+import { RequiresFeature } from 'src/auth/decorators/requires-feature.decorator';
 import { UploadFile } from 'src/common/decorators/upload-file.decorator';
 import { ActiveUser } from 'src/common/decorators/active-user.decorator';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
 
 @ApiTags('HR - Employment movements')
 @ApiBearerAuth()
+@RequiresFeature(Feature.HR_FULL)
 @Controller('hr/movements')
 export class EmploymentMovementsController {
   constructor(

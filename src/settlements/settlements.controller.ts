@@ -12,11 +12,14 @@ import { SettlementsService } from './settlements.service';
 import { SettlementStatus } from 'src/common/enums/settlementStatus.enum';
 import { Auth } from 'src/auth/decorators/auth.decorator';
 import { Role } from 'src/common/enums/role.enum';
+import { Feature } from 'src/common/enums/feature.enum';
+import { RequiresFeature } from 'src/auth/decorators/requires-feature.decorator';
 import { ActiveUser } from 'src/common/decorators/active-user.decorator';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
 
 @ApiTags('Settlements (Liquidaciones)')
 @ApiBearerAuth()
+@RequiresFeature(Feature.SETTLEMENTS)
 @Controller('settlements')
 export class SettlementsController {
   constructor(private readonly settlementsService: SettlementsService) {}

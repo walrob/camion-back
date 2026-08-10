@@ -17,12 +17,15 @@ import { CreateCertificationDto } from './dto/create-certification.dto';
 import { UpdateCertificationDto } from './dto/update-certification.dto';
 import { Auth } from 'src/auth/decorators/auth.decorator';
 import { Role } from 'src/common/enums/role.enum';
+import { Feature } from 'src/common/enums/feature.enum';
+import { RequiresFeature } from 'src/auth/decorators/requires-feature.decorator';
 import { UploadFile } from 'src/common/decorators/upload-file.decorator';
 import { ActiveUser } from 'src/common/decorators/active-user.decorator';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
 
 @ApiTags('HR - Certifications')
 @ApiBearerAuth()
+@RequiresFeature(Feature.HR_BASIC)
 @Controller('hr/certifications')
 export class CertificationsController {
   constructor(

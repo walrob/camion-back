@@ -4,6 +4,8 @@ import { Auth } from 'src/auth/decorators/auth.decorator';
 import { Role } from 'src/common/enums/role.enum';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { OverviewQueryDto } from './dto/overview-query.dto';
+import { ActiveUser } from 'src/common/decorators/active-user.decorator';
+import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
 
 @ApiTags('Dashboard')
 @Controller('dashboard')
@@ -20,7 +22,11 @@ export class DashboardController {
       'todayExpenses, delayedTrips, driversWithNews, upcomingMaintenance) y un ' +
       'bloque `trends` con value/previousValue/series por métrica según `range`.',
   })
-  getOverview(@Query() query: OverviewQueryDto) {
-    return this.dashboardService.getOverview(query.range ?? '7d');
+  getOverview(
+    @Query() query: OverviewQueryDto,
+    @ActiveUser() user: ActiveUserInterface,
+  ) {
+    // La empresa va explícita: el panel recorta sus métricas según el plan.
+    return this.dashboardService.getOverview(query.range ?? '7d', user.companyId);
   }
 }

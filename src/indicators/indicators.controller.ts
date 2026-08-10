@@ -12,9 +12,12 @@ import { IndicatorFilterDto } from './dto/indicator-filter.dto';
 import { ExpenseGroupFilterDto } from './dto/expense-group-filter.dto';
 import { Auth } from 'src/auth/decorators/auth.decorator';
 import { Role } from 'src/common/enums/role.enum';
+import { Feature } from 'src/common/enums/feature.enum';
+import { RequiresFeature } from 'src/auth/decorators/requires-feature.decorator';
 
 @ApiTags('Indicators')
 @ApiBearerAuth()
+@RequiresFeature(Feature.INDICATORS)
 @Controller('indicators')
 export class IndicatorsController {
   constructor(private readonly indicatorsService: IndicatorsService) {}

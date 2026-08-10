@@ -19,11 +19,14 @@ import { SignOeaDto } from './dto/sign-oea.dto';
 import { OeaFilterDto } from './dto/oea-filter.dto';
 import { Auth } from 'src/auth/decorators/auth.decorator';
 import { Role } from 'src/common/enums/role.enum';
+import { Feature } from 'src/common/enums/feature.enum';
+import { RequiresFeature } from 'src/auth/decorators/requires-feature.decorator';
 import { ActiveUser } from 'src/common/decorators/active-user.decorator';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
 
 @ApiTags('OEA')
 @ApiBearerAuth()
+@RequiresFeature(Feature.OEA)
 @Controller('oea')
 export class OeaController {
   constructor(private readonly oeaService: OeaService) {}
