@@ -83,7 +83,7 @@ export class SeedPlans1786250000000 implements MigrationInterface {
         features: this.BASE,
         limits: {
           retentionMonths: 6,
-          storageGb: 5,
+          storageGb: 2,
           alertRules: 3,
           maintenancePlans: 0,
           roles: ['admin', 'manager', 'dispatcher', 'driver'],

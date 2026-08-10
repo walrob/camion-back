@@ -25,6 +25,7 @@ import {
   money,
   number as num,
 } from 'src/common/pdf/pdf-report.util';
+import { LimitsService } from 'src/plans/limits.service';
 
 const ORDER_STATUS_LABELS: Record<string, string> = {
   [MaintenanceOrderStatus.OPEN]: 'Abierta',
@@ -41,6 +42,7 @@ export class MaintenanceService {
     private readonly ordersRepository: Repository<MaintenanceOrder>,
     private readonly trucksService: TrucksService,
     private readonly alertsService: AlertsService,
+    private readonly limitsService: LimitsService,
   ) {}
 
   // ───────── Planes ─────────
@@ -48,6 +50,7 @@ export class MaintenanceService {
     dto: CreatePlanDto,
     user: ActiveUserInterface,
   ): Promise<MaintenancePlan> {
+    await this.limitsService.assertCanCreate(user.companyId, 'maintenancePlans');
     const truck = await this.trucksService.findOne(dto.truckId);
     const plan = this.plansRepository.create({ ...dto, createdBy: user.id });
     this.applyNextDue(plan, truck);

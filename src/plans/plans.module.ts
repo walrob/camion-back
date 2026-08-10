@@ -4,6 +4,10 @@ import { Plan } from './entities/plan.entity';
 import { PlanContextService } from './plan-context.service';
 import { CompaniesModule } from 'src/companies/companies.module';
 import { FeatureGuard } from 'src/auth/guard/feature.guard';
+import { LimitsService } from './limits.service';
+import { StorageReconciliationService } from './storage-reconciliation.service';
+import { AlertRuleConfig } from 'src/alerts/entities/alert-rule-config.entity';
+import { MaintenancePlan } from 'src/maintenance/entities/maintenance-plan.entity';
 
 /**
  * Catálogo comercial de planes. Es global: no lleva `companyId`, lo comparten
@@ -16,8 +20,27 @@ import { FeatureGuard } from 'src/auth/guard/feature.guard';
  */
 @Global()
 @Module({
-  imports: [TypeOrmModule.forFeature([Plan]), CompaniesModule],
-  providers: [PlanContextService, FeatureGuard],
-  exports: [PlanContextService, FeatureGuard, TypeOrmModule],
+  imports: [
+    TypeOrmModule.forFeature([Plan]),
+    CompaniesModule,
+    // Los límites de conteo necesitan mirar el estado actual de la empresa.
+    // Van sin scopear (TypeOrmModule y no TenantTypeOrmModule) porque el
+    // servicio filtra por `companyId` de forma explícita: también lo usan el
+    // cron de reconciliación y el superadmin, que operan sobre todas.
+    TypeOrmModule.forFeature([AlertRuleConfig, MaintenancePlan]),
+  ],
+  providers: [
+    PlanContextService,
+    FeatureGuard,
+    LimitsService,
+    StorageReconciliationService,
+  ],
+  exports: [
+    PlanContextService,
+    FeatureGuard,
+    LimitsService,
+    StorageReconciliationService,
+    TypeOrmModule,
+  ],
 })
 export class PlansModule {}

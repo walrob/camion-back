@@ -6,15 +6,40 @@ import {
   FindOneOptions,
   FindOptionsWhere,
   In,
+  MoreThanOrEqual,
   ObjectLiteral,
   Repository,
   SelectQueryBuilder,
   UpdateResult,
 } from 'typeorm';
-import { getCurrentCompanyId, isSystemContext } from './tenant-context';
+import {
+  getCurrentCompanyId,
+  getRetentionCutoff,
+  isSystemContext,
+} from './tenant-context';
 
 /** Nombre poco frecuente para no pisar parámetros de las consultas del dominio. */
 const PARAM = '__tenantCompanyId';
+const PARAM_RETENCION = '__tenantRetentionCutoff';
+
+/**
+ * Entidades sujetas al límite de retención del plan.
+ *
+ * Son las que forman el histórico operativo. Quedan afuera a propósito los
+ * maestros —flota, choferes, legajos, documentos, planes de mantenimiento—:
+ * recortar la flota o el personal por antigüedad rompería el sistema, no
+ * limitaría un histórico.
+ */
+const TABLAS_HISTORICAS = new Set([
+  'trips',
+  'trip_log_entries',
+  'settlements',
+  'fuel_records',
+  'incidents',
+  'maintenance_orders',
+  'oea_inspections',
+  'checklists',
+]);
 
 /** Métodos que ejecutan la consulta o materializan su SQL. */
 const TERMINALES = new Set([
@@ -51,6 +76,7 @@ const TERMINALES = new Set([
 function protegerQueryBuilder<T extends ObjectLiteral>(
   qb: SelectQueryBuilder<T>,
   companyId: string,
+  corteRetencion?: Date,
 ): SelectQueryBuilder<T> {
   let aplicado = false;
 
@@ -60,6 +86,11 @@ function protegerQueryBuilder<T extends ObjectLiteral>(
     target.andWhere(`${target.alias}.companyId = :${PARAM}`, {
       [PARAM]: companyId,
     });
+    if (corteRetencion) {
+      target.andWhere(`${target.alias}.createdAt >= :${PARAM_RETENCION}`, {
+        [PARAM_RETENCION]: corteRetencion,
+      });
+    }
   };
 
   return new Proxy(qb, {
@@ -124,12 +155,38 @@ export class TenantRepository<T extends ObjectLiteral> extends Repository<T> {
     return getCurrentCompanyId();
   }
 
-  /** Agrega `companyId` a un `where`, soportando la forma de array (OR). */
+  /** true si esta entidad forma parte del histórico que el plan recorta. */
+  private esHistorica(): boolean {
+    return TABLAS_HISTORICAS.has(this.metadata.tableName);
+  }
+
+  /**
+   * Corte de retención aplicable a ESTA entidad, o `undefined` si no aplica.
+   *
+   * El recorte es sólo de LECTURA: el dato sigue en la base (decisión D4). Por
+   * eso no toca `update`, `delete` ni `softDelete` — un registro fuera de la
+   * ventana no se ve, pero tampoco se rompe si algo lo referencia.
+   */
+  private corteActual(): Date | undefined {
+    if (isSystemContext()) return undefined;
+    if (!this.esHistorica()) return undefined;
+    return getRetentionCutoff();
+  }
+
+  /**
+   * Agrega `companyId` —y el corte de retención cuando corresponde— a un
+   * `where`, soportando la forma de array (OR).
+   */
   private scopeWhere(
     where: FindOptionsWhere<T> | FindOptionsWhere<T>[] | undefined,
     companyId: string,
   ): FindOptionsWhere<T> | FindOptionsWhere<T>[] {
-    const extra = { companyId } as unknown as FindOptionsWhere<T>;
+    const corte = this.corteActual();
+    const extra = {
+      companyId,
+      ...(corte ? { createdAt: MoreThanOrEqual(corte) } : {}),
+    } as unknown as FindOptionsWhere<T>;
+
     if (Array.isArray(where)) {
       // Cada rama del OR se acota por empresa; si no, una sola rama sin filtrar
       // abriría el resultado a las demás empresas.
@@ -239,7 +296,7 @@ export class TenantRepository<T extends ObjectLiteral> extends Repository<T> {
     const qb = super.createQueryBuilder(alias, queryRunner);
     const companyId = this.empresaActual();
     if (!companyId) return qb;
-    return protegerQueryBuilder(qb, companyId);
+    return protegerQueryBuilder(qb, companyId, this.corteActual());
   }
 
   // ─── Escrituras masivas ────────────────────────────────────────────────────

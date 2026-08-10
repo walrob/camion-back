@@ -17,6 +17,8 @@ import { AlertsGateway } from './alerts.gateway';
 import { Truck } from 'src/fleet/entities/truck.entity';
 import { Trip } from 'src/trips/entities/trip.entity';
 import { TripLogEntry } from 'src/trip-log/entities/trip-log-entry.entity';
+import { LimitsService } from 'src/plans/limits.service';
+import { getCurrentCompanyId } from 'src/common/tenant/tenant-context';
 
 const DEFAULT_THRESHOLDS: Record<string, string> = {
   idleHoursThreshold: '6',
@@ -44,6 +46,7 @@ export class AlertsService {
     @InjectRepository(TripLogEntry)
     private readonly entriesRepository: Repository<TripLogEntry>,
     private readonly gateway: AlertsGateway,
+    private readonly limitsService: LimitsService,
   ) {}
 
   // ───────── Núcleo ─────────
@@ -285,6 +288,18 @@ export class AlertsService {
 
   async setThreshold(key: string, value: string, enabled = true) {
     let config = await this.configRepository.findOne({ where: { key } });
+
+    // El cupo del plan se consume por regla ACTIVA. Sólo se valida cuando la
+    // regla pasa a estar activa —al crearla o al reactivar una apagada—: editar
+    // el valor de una regla que ya estaba activa no suma ninguna.
+    const activandoNueva = !config && enabled;
+    const reactivando = !!config && !config.enabled && enabled;
+    const companyId = getCurrentCompanyId();
+
+    if (companyId && (activandoNueva || reactivando)) {
+      await this.limitsService.assertCanCreate(companyId, 'alertRules');
+    }
+
     if (!config) config = this.configRepository.create({ key });
     config.value = value;
     config.enabled = enabled;

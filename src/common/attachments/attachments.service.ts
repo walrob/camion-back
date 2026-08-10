@@ -9,6 +9,8 @@ import * as sharp from 'sharp';
 import { Attachment } from './entities/attachment.entity';
 import { AttachmentKind } from 'src/common/enums/attachmentKind.enum';
 import { StorageService } from 'src/common/storage/storage.service';
+import { LimitsService } from 'src/plans/limits.service';
+import { getCurrentCompanyId } from 'src/common/tenant/tenant-context';
 
 @Injectable()
 export class AttachmentsService {
@@ -16,6 +18,7 @@ export class AttachmentsService {
     @InjectRepository(Attachment)
     private readonly attachmentsRepository: Repository<Attachment>,
     private readonly storageService: StorageService,
+    private readonly limitsService: LimitsService,
   ) {}
 
   private resolveKind(mime: string): AttachmentKind {
@@ -56,6 +59,15 @@ export class AttachmentsService {
       await this.compressImage(file);
     }
 
+    // El tamaño se mide DESPUÉS de comprimir —que es lo que se va a guardar— y
+    // se valida ANTES de subir: si se chequeara después, el archivo ya estaría
+    // ocupando lugar en S3 aunque la operación termine rechazada.
+    const bytes = file.size ?? file.buffer.length;
+    const companyId = getCurrentCompanyId();
+    if (companyId) {
+      await this.limitsService.assertHayEspacio(companyId, bytes);
+    }
+
     const s3Key = await this.storageService.uploadFile(
       file,
       `attachments/${entityType}`,
@@ -67,12 +79,20 @@ export class AttachmentsService {
       kind,
       s3Key,
       mime: file.mimetype,
-      sizeBytes: file.size ?? file.buffer.length,
+      sizeBytes: bytes,
       uploadedBy,
       createdBy: uploadedBy,
     });
 
-    return this.attachmentsRepository.save(attachment);
+    const guardado = await this.attachmentsRepository.save(attachment);
+
+    // El acumulado se ajusta recién con el adjunto ya persistido: si el guardado
+    // falla, el contador no queda inflado.
+    if (companyId) {
+      await this.limitsService.ajustarStorage(companyId, bytes);
+    }
+
+    return guardado;
   }
 
   listByEntity(entityType: string, entityId: string): Promise<Attachment[]> {
@@ -103,6 +123,17 @@ export class AttachmentsService {
       await this.attachmentsRepository.save(attachment);
     }
     await this.attachmentsRepository.softDelete(id);
+
+    // Libera el lugar ocupado. Si algún día el borrado lógico deja de implicar
+    // el borrado del objeto en S3, esto hay que revisarlo: el cron nocturno de
+    // reconciliación es el que tiene la última palabra.
+    if (attachment.companyId) {
+      await this.limitsService.ajustarStorage(
+        attachment.companyId,
+        -(attachment.sizeBytes ?? 0),
+      );
+    }
+
     return { id };
   }
 }

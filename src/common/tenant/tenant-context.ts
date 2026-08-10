@@ -31,6 +31,18 @@ export interface TenantStore {
    * empresa y el tripwire. Es la ÚNICA vía de escape y siempre es explícita.
    */
   system?: boolean;
+  /**
+   * Fecha de corte de la retención del plan: no se muestran registros
+   * históricos anteriores. `undefined` = sin corte (plan ilimitado).
+   *
+   * Viaja en el contexto porque el query builder se arma de forma sincrónica y
+   * no puede esperar una consulta del plan en el momento de filtrar.
+   *
+   * El dato **no se borra** (decisión D4): sólo se deja de mostrar. Un upgrade
+   * devuelve el histórico completo al instante, que es justamente el argumento
+   * de venta.
+   */
+  retentionCutoff?: Date;
 }
 
 export const tenantStorage = new AsyncLocalStorage<TenantStore>();
@@ -45,6 +57,31 @@ export function setTenantContext(companyId: string, userId?: string): void {
   if (!store) return; // fuera de un request (tests unitarios, arranque)
   store.companyId = companyId;
   store.userId = userId;
+}
+
+/** Fija el corte de retención del plan para el request en curso. */
+export function setRetentionCutoff(cutoff?: Date): void {
+  const store = tenantStorage.getStore();
+  if (!store) return;
+  store.retentionCutoff = cutoff;
+}
+
+/** Corte de retención vigente, o `undefined` si el plan no recorta. */
+export const getRetentionCutoff = (): Date | undefined =>
+  tenantStorage.getStore()?.retentionCutoff;
+
+/**
+ * Calcula el corte a partir de los meses de retención del plan.
+ * `null`/`undefined` = plan sin límite.
+ */
+export function calcularCorteRetencion(
+  retentionMonths?: number | null,
+): Date | undefined {
+  if (!retentionMonths) return undefined;
+  const corte = new Date();
+  corte.setMonth(corte.getMonth() - retentionMonths);
+  corte.setHours(0, 0, 0, 0);
+  return corte;
 }
 
 /** Empresa de la operación en curso, si la hay. */

@@ -20,6 +20,7 @@ import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface
 import { LoginDto } from './dto/login.dto';
 import { CreateOperatorDto } from './dto/create-operator.dto';
 import { DEMO_READONLY_MESSAGE } from './guard/demo-readonly.guard';
+import { LimitsService } from 'src/plans/limits.service';
 
 @Injectable()
 export class AuthService {
@@ -29,6 +30,7 @@ export class AuthService {
     @InjectRepository(Company)
     private readonly companiesRepository: Repository<Company>,
     private readonly planContext: PlanContextService,
+    private readonly limitsService: LimitsService,
   ) {}
 
   /**
@@ -54,6 +56,11 @@ export class AuthService {
 
     const plan = await this.planContext.obtener(user.companyId);
 
+    // El consumo de almacenamiento viaja en la sesión para que el front pueda
+    // mostrarlo antes de que el cliente choque el tope: un límite que sólo se
+    // descubre cuando falla una subida se percibe como una falla del producto.
+    const storage = await this.limitsService.estadoStorage(user.companyId);
+
     return {
       company,
       plan: plan
@@ -61,6 +68,7 @@ export class AuthService {
         : null,
       features: plan?.features ?? [],
       limits: plan?.limits ?? null,
+      storage,
     };
   }
 
@@ -165,12 +173,18 @@ export class AuthService {
     const existing = await this.usersService.findOneByEmail(createOperatorDto.email);
     if (existing) throw new ConflictException('Ya existe un usuario con este email.');
 
+    // Los planes chicos no incluyen todos los roles: Control no tiene taller,
+    // RRHH ni auditoría (MODELO-COMERCIAL §4.1). Los usuarios siguen siendo
+    // ilimitados: lo que limita el plan es QUÉ rol puede tener, no cuántos.
+    const rol = createOperatorDto.role ?? Role.DRIVER;
+    await this.limitsService.assertRolPermitido(adminUser.companyId, rol);
+
     const newUser = await this.usersService.create({
       email: createOperatorDto.email,
       name: createOperatorDto.name,
       password: await bcryptjs.hash(createOperatorDto.password, 10),
       isEmailVerified: true,
-      role: createOperatorDto.role ?? Role.DRIVER,
+      role: rol,
     });
 
     return {

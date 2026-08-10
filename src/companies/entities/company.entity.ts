@@ -9,6 +9,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { CompanyStatus } from 'src/common/enums/companyStatus.enum';
+import { StorageAddon } from 'src/common/enums/storageAddon.enum';
 import { Plan } from 'src/plans/entities/plan.entity';
 
 /**
@@ -123,6 +124,34 @@ export class Company {
   /** Día del mes en que se emite el período facturable. */
   @Column('int', { default: 1 })
   billingDay: number;
+
+  // --- Consumo ---
+
+  /**
+   * Bytes de adjuntos en uso. Es un acumulado que se ajusta al subir y al
+   * borrar, no un `SUM()` en vivo: contar decenas de miles de adjuntos en cada
+   * subida sería inviable.
+   *
+   * Todo contador incremental se desvía (subidas fallidas, borrados fuera de la
+   * aplicación), así que un cron nocturno lo reconcilia contra la suma real.
+   */
+  @Column('bigint', { default: 0 })
+  storageBytesUsed: string;
+
+  /**
+   * Escalón de almacenamiento adicional contratado.
+   *
+   * Permite que un cliente que llenó su espacio siga en su plan pagando sólo la
+   * capacidad: el costo de S3 es proporcional a los GB, no a las
+   * funcionalidades. El tope efectivo es el mayor entre lo que incluye el plan y
+   * el techo del escalón.
+   */
+  @Column({
+    type: 'enum',
+    enum: StorageAddon,
+    default: StorageAddon.NONE,
+  })
+  storageAddon: StorageAddon;
 
   // --- Marca blanca (add-on) ---
 
