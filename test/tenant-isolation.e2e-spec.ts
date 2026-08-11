@@ -171,17 +171,50 @@ describe('Aislamiento entre empresas (barrido de endpoints)', () => {
     expect(fugas).toEqual([]);
   });
 
+  /**
+   * Rutas que responden sin token **a propósito**.
+   *
+   * Agregar algo acá es una decisión de diseño que hay que justificar por
+   * escrito: es la lista de todo lo que cualquiera puede leer desde internet.
+   */
+  const PUBLICAS_DECLARADAS: Record<string, string> = {
+    '/api/v1/plans/public':
+      'Catálogo comercial para la landing. Sólo planes marcados isPublic, ' +
+      'sin datos de ninguna empresa. Que los precios salgan de la base es lo ' +
+      'que permite cambiarlos sin deploy (decisión D8).',
+  };
+
   it('sin token, ninguna ruta privada devuelve datos', async () => {
     const rutas = rutasGet().filter((p) => !p.includes(':'));
     const abiertas: string[] = [];
 
     for (const ruta of rutas) {
+      if (PUBLICAS_DECLARADAS[ruta]) continue;
+
       const res = await request(app.getHttpServer()).get(ruta);
       if (res.status === 200) abiertas.push(ruta);
     }
 
-    // Si alguna ruta es pública a propósito, hay que declararla acá con motivo.
     expect(abiertas).toEqual([]);
+  });
+
+  it('las rutas públicas declaradas no filtran datos de ninguna empresa', async () => {
+    const fugas: string[] = [];
+
+    for (const ruta of Object.keys(PUBLICAS_DECLARADAS)) {
+      const res = await request(app.getHttpServer()).get(ruta);
+      if (res.status !== 200) continue;
+
+      const crudo = JSON.stringify(res.body ?? {});
+      for (const id of [...entorno.idsDeA, ...entorno.idsDeB]) {
+        if (crudo.includes(id)) {
+          fugas.push(`${ruta} → contiene ${id}`);
+          break;
+        }
+      }
+    }
+
+    expect(fugas).toEqual([]);
   });
 
   it('escribir en un recurso de otra empresa no lo modifica', async () => {

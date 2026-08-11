@@ -5,6 +5,7 @@ import { PlanContextService } from './plan-context.service';
 import { CompaniesModule } from 'src/companies/companies.module';
 import { FeatureGuard } from 'src/auth/guard/feature.guard';
 import { LimitsService } from './limits.service';
+import { PlansController } from './plans.controller';
 import { StorageReconciliationService } from './storage-reconciliation.service';
 import { AlertRuleConfig } from 'src/alerts/entities/alert-rule-config.entity';
 import { MaintenancePlan } from 'src/maintenance/entities/maintenance-plan.entity';
@@ -29,6 +30,7 @@ import { MaintenancePlan } from 'src/maintenance/entities/maintenance-plan.entit
     // cron de reconciliación y el superadmin, que operan sobre todas.
     TypeOrmModule.forFeature([AlertRuleConfig, MaintenancePlan]),
   ],
+  controllers: [PlansController],
   providers: [
     PlanContextService,
     FeatureGuard,
