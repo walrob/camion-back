@@ -51,6 +51,9 @@ export class AuthService {
         trialEndsAt: true,
         logoUrl: true,
         primaryColor: true,
+        // El middleware del front lo usa para llevar a una empresa nueva por la
+        // carga inicial en vez de dejarla frente a un sistema vacío.
+        onboardingStep: true,
       },
     });
 

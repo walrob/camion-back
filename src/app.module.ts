@@ -2,6 +2,7 @@ import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
@@ -28,6 +29,7 @@ import { OeaModule } from './oea/oea.module';
 import { CompaniesModule } from './companies/companies.module';
 import { PlansModule } from './plans/plans.module';
 import { BillingModule } from './billing/billing.module';
+import { InvitesModule } from './invites/invites.module';
 import { TenantModule } from './common/tenant/tenant.module';
 import { TenantContextMiddleware } from './common/tenant/tenant-context.middleware';
 
@@ -39,6 +41,10 @@ import { TenantContextMiddleware } from './common/tenant/tenant-context.middlewa
     }),
 
     ScheduleModule.forRoot(),
+
+    // Límite por IP. El default es holgado para no molestar al uso normal; los
+    // endpoints públicos que crean cuentas lo ajustan con @Throttle (R6.1).
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
 
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
@@ -112,6 +118,7 @@ import { TenantContextMiddleware } from './common/tenant/tenant-context.middlewa
     FuelModule,
     OeaModule,
     BillingModule,
+    InvitesModule,
   ],
   controllers: [],
   providers: [],

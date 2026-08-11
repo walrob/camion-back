@@ -79,6 +79,16 @@ export class Company {
   @Column({ type: 'timestamp', nullable: true })
   trialEndsAt: Date;
 
+  /**
+   * Paso del onboarding guiado que falta completar. `0` = terminado.
+   *
+   * El middleware del front lo usa para llevar a la empresa nueva por la carga
+   * inicial en vez de dejarla frente a un sistema vacío, que es la forma más
+   * rápida de perder a alguien que recién se dio de alta.
+   */
+  @Column('int', { default: 0 })
+  onboardingStep: number;
+
   /** Fecha de la baja. NULL = nunca se dio de baja. */
   @Column({ type: 'timestamp', nullable: true, default: null })
   cancelledAt: Date | null;

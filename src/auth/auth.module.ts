@@ -11,7 +11,7 @@ import { CompaniesModule } from 'src/companies/companies.module';
     forwardRef(() => UsersModule),
     ConfigModule,
     // `GET /auth/session` devuelve la empresa junto con su plan.
-    CompaniesModule,
+    forwardRef(() => CompaniesModule),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({

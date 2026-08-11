@@ -112,6 +112,10 @@ describe('Modelo multi-empresa', () => {
       // Correcto por D1: si un usuario pertenece a una sola empresa, no puede
       // ser empleado de dos. Scoparlo por companyId no aportaría nada.
       'Employee.userId',
+      // El token de invitación ES la credencial: se resuelve ANTES de saber a
+      // qué empresa pertenece quien lo usa, así que no puede scoparse. Es un
+      // UUID aleatorio de un solo uso y con vencimiento.
+      'Invite.token',
       // El token identifica un dispositivo, que no puede estar en dos empresas.
       'DeviceToken.token',
     ];

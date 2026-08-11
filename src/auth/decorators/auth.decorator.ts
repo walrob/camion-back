@@ -6,6 +6,7 @@ import { DemoReadOnlyGuard } from '../guard/demo-readonly.guard';
 import { Roles } from './roles.decorator';
 import { Feature } from '../../common/enums/feature.enum';
 import { FeatureGuard } from '../guard/feature.guard';
+import { AccountStatusGuard } from '../guard/account-status.guard';
 import { RequiresFeature } from './requires-feature.decorator';
 
 export function Auth(...roles: Role[]) {
@@ -21,7 +22,13 @@ export function Auth(...roles: Role[]) {
   // Si el endpoint no declara feature, FeatureGuard devuelve true de inmediato.
   return applyDecorators(
     Roles(...roles),
-    UseGuards(AuthGuard, RolesGuard, FeatureGuard, DemoReadOnlyGuard),
+    UseGuards(
+      AuthGuard,
+      RolesGuard,
+      AccountStatusGuard,
+      FeatureGuard,
+      DemoReadOnlyGuard,
+    ),
   );
 }
 
