@@ -56,6 +56,8 @@ export class CompanyStatusCron {
         where: {
           status: In([CompanyStatus.TRIAL]),
           trialEndsAt: LessThan(corte),
+          // La empresa plataforma no es un cliente: no tiene trial que vencer.
+          isPlatform: false,
         },
       });
 

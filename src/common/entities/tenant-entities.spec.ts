@@ -25,6 +25,12 @@ const CATALOGO_GLOBAL: Record<string, string> = {
   Company: 'Es el tenant en sí: es la raíz a la que apuntan las demás.',
   Plan: 'Catálogo comercial de planes, común a todas las empresas.',
   Addon: 'Catálogo comercial de add-ons. Lo contratado por cada empresa vive en CompanyAddon, que sí es de tenant.',
+  AuditLog:
+    'Registro de auditoría. TIENE una columna `companyId` —para decir a qué ' +
+    'empresa afectó una acción— pero es nullable y no hereda de TenantEntity: ' +
+    'debe poder registrar acciones globales del superadmin, que no pertenecen ' +
+    'a ninguna empresa. El filtrado por empresa lo hace AuditLogService de ' +
+    'forma explícita según quién consulta.',
 };
 
 describe('Modelo multi-empresa', () => {

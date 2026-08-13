@@ -30,6 +30,8 @@ import { CompaniesModule } from './companies/companies.module';
 import { PlansModule } from './plans/plans.module';
 import { BillingModule } from './billing/billing.module';
 import { InvitesModule } from './invites/invites.module';
+import { SuperadminModule } from './superadmin/superadmin.module';
+import { AuditLogModule } from './audit-log/audit-log.module';
 import { TenantModule } from './common/tenant/tenant.module';
 import { TenantContextMiddleware } from './common/tenant/tenant-context.middleware';
 
@@ -119,6 +121,9 @@ import { TenantContextMiddleware } from './common/tenant/tenant-context.middlewa
     OeaModule,
     BillingModule,
     InvitesModule,
+    // Global: la auditoría la usan facturación, empresas y superadmin.
+    AuditLogModule,
+    SuperadminModule,
   ],
   controllers: [],
   providers: [],

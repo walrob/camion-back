@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Feature } from 'src/common/enums/feature.enum';
+import { Role } from 'src/common/enums/role.enum';
 import { PlanContextService } from 'src/plans/plan-context.service';
 import { FEATURE_KEY } from '../decorators/requires-feature.decorator';
 
@@ -37,6 +38,10 @@ export class FeatureGuard implements CanActivate {
     if (!feature) return true;
 
     const { user } = context.switchToHttp().getRequest();
+
+    // El superadmin opera sobre la plataforma, no dentro de un plan.
+    if (user?.role === Role.SUPERADMIN) return true;
+
     if (!user?.companyId) {
       throw new ForbiddenException('Sin empresa en la sesión.');
     }

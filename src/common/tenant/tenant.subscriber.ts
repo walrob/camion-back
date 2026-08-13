@@ -8,6 +8,7 @@ import {
   UpdateEvent,
 } from 'typeorm';
 import { getCurrentCompanyId, isSystemContext } from './tenant-context';
+import { TenantEntity } from '../entities/tenant.entity';
 
 /**
  * Red de seguridad del aislamiento entre empresas.
@@ -22,8 +23,9 @@ import { getCurrentCompanyId, isSystemContext } from './tenant-context';
  *    filtrar. Se lanza una excepción en lugar de devolver el dato: preferimos un
  *    error ruidoso a una fuga silenciosa.
  *
- * Sólo actúa sobre entidades que tienen `companyId`. El catálogo global
- * (`Company`, `Plan`) queda fuera por no tener esa columna.
+ * Sólo actúa sobre las entidades que heredan de `TenantEntity`. Quedan fuera el
+ * catálogo global (`Company`, `Plan`, `Addon`) y la auditoría, que tiene una
+ * columna `companyId` pero debe poder registrar acciones sin empresa.
  */
 @Injectable()
 @EventSubscriber()
@@ -34,9 +36,24 @@ export class TenantSubscriber implements EntitySubscriberInterface {
     dataSource.subscribers.push(this);
   }
 
-  /** Sólo las entidades de empresa tienen la columna `companyId`. */
+  /**
+   * ¿Es una entidad de empresa?
+   *
+   * Se mira la **herencia de `TenantEntity`**, no la presencia de una columna
+   * `companyId`. La diferencia importa: `AuditLog` tiene `companyId` —para poder
+   * decir a qué empresa afectó una acción— pero **no** es una entidad de
+   * empresa: debe poder registrar acciones globales del superadmin, sin empresa.
+   * Con el criterio anterior el subscriber las rechazaba y la auditoría se
+   * perdía en silencio, justo en las acciones más sensibles.
+   *
+   * Además, esto coincide con el contrato que ya declaraba `TenantEntity`:
+   * heredar de ella es lo que activa el estampado y el tripwire.
+   */
   private esDeEmpresa(metadata: EntityMetadata): boolean {
-    return metadata.columns.some((c) => c.propertyName === 'companyId');
+    const target = metadata.target;
+    return (
+      typeof target === 'function' && target.prototype instanceof TenantEntity
+    );
   }
 
   beforeInsert(event: InsertEvent<Record<string, unknown>>): void {

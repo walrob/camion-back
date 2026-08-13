@@ -9,9 +9,11 @@ import { Request } from 'express';
 import {
   calcularCorteRetencion,
   setRetentionCutoff,
+  setSystemContext,
   setTenantContext,
 } from 'src/common/tenant/tenant-context';
 import { PlanContextService } from 'src/plans/plan-context.service';
+import { Role } from 'src/common/enums/role.enum';
 
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -35,7 +37,12 @@ export class AuthGuard implements CanActivate {
       // Momento en que el token verificado se convierte en aislamiento: a
       // partir de acá todos los repositorios filtran por esta empresa sin que
       // los servicios tengan que hacer nada.
-      if (payload?.companyId) {
+      // El superadmin es el único rol sin empresa: opera sobre todas. Se marca
+      // el contexto como de plataforma de forma EXPLÍCITA, para que el
+      // privilegio no se confunda nunca con un token incompleto.
+      if (payload?.role === Role.SUPERADMIN) {
+        setSystemContext(payload.id);
+      } else if (payload?.companyId) {
         setTenantContext(payload.companyId, payload.id);
 
         // El corte de retención se resuelve una vez por request y viaja en el

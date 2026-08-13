@@ -59,6 +59,21 @@ export function setTenantContext(companyId: string, userId?: string): void {
   store.userId = userId;
 }
 
+/**
+ * Marca el request como operación de plataforma: ve todas las empresas.
+ *
+ * Lo usa **sólo** el superadmin, y se declara de forma explícita en vez de
+ * apoyarse en que "sin empresa no se filtra". La diferencia importa: un token
+ * roto o un guard mal puesto también dejarían el contexto vacío, y eso no puede
+ * confundirse con un permiso. Acá el privilegio se pide por su nombre.
+ */
+export function setSystemContext(userId?: string): void {
+  const store = tenantStorage.getStore();
+  if (!store) return;
+  store.system = true;
+  store.userId = userId;
+}
+
 /** Fija el corte de retención del plan para el request en curso. */
 export function setRetentionCutoff(cutoff?: Date): void {
   const store = tenantStorage.getStore();

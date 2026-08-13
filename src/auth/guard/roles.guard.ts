@@ -20,8 +20,17 @@ export class RolesGuard implements CanActivate {
 
     const { user } = context.switchToHttp().getRequest();
 
-    // si es administrador, habilitado para todo
-    if (user.role === Role.ADMIN) return true;
+    // El superadmin opera la plataforma: pasa siempre.
+    if (user.role === Role.SUPERADMIN) return true;
+
+    // El ADMIN es el rol máximo DE SU EMPRESA, y por eso pasa cualquier control
+    // de rol... salvo los que exigen SUPERADMIN, que es un rol de plataforma y
+    // está por encima de él.
+    //
+    // Sin esta excepción, el atajo convertía a todo administrador de cliente en
+    // operador de la plataforma: podía ver y modificar las demás empresas.
+    const exigeSuperadmin = requiredRoles.includes(Role.SUPERADMIN);
+    if (user.role === Role.ADMIN && !exigeSuperadmin) return true;
 
     return requiredRoles.includes(user.role);
   }

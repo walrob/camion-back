@@ -51,6 +51,20 @@ export class Company {
   @Column({ unique: true })
   slug: string;
 
+  /**
+   * Empresa que representa a FleetLog, no a un cliente.
+   *
+   * Existe para que el superadmin tenga una empresa a la que pertenecer y así
+   * `user.companyId` pueda seguir siendo NOT NULL. Debilitar esa invariante
+   * —permitir usuarios sin empresa— abriría un agujero en el aislamiento: una
+   * fila sin empresa no la filtra nadie.
+   *
+   * Queda excluida de los listados, del MRR y de la facturación: no es un
+   * cliente.
+   */
+  @Column({ default: false })
+  isPlatform: boolean;
+
   @Column({ nullable: true })
   cuit: string;
 

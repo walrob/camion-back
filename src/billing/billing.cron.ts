@@ -36,7 +36,8 @@ export class BillingCron {
   private empresasFacturables(): Promise<Company[]> {
     return runAsSystem(() =>
       this.companiesRepository.find({
-        where: { status: In(FACTURABLES) },
+        // La empresa plataforma es FleetLog, no un cliente: no se factura.
+        where: { status: In(FACTURABLES), isPlatform: false },
       }),
     );
   }

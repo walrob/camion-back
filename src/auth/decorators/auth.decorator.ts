@@ -3,6 +3,7 @@ import { Role } from '../../common/enums/role.enum';
 import { AuthGuard } from '../guard/auth.guard';
 import { RolesGuard } from '../guard/roles.guard';
 import { DemoReadOnlyGuard } from '../guard/demo-readonly.guard';
+import { ImpersonationReadOnlyGuard } from '../guard/impersonation-readonly.guard';
 import { Roles } from './roles.decorator';
 import { Feature } from '../../common/enums/feature.enum';
 import { FeatureGuard } from '../guard/feature.guard';
@@ -28,6 +29,8 @@ export function Auth(...roles: Role[]) {
       AccountStatusGuard,
       FeatureGuard,
       DemoReadOnlyGuard,
+      // Última barrera: en modo soporte no se escribe nada (R8.2).
+      ImpersonationReadOnlyGuard,
     ),
   );
 }
@@ -46,6 +49,13 @@ export function AuthFeature(feature: Feature, ...roles: Role[]) {
   return applyDecorators(
     RequiresFeature(feature),
     Roles(...roles),
-    UseGuards(AuthGuard, RolesGuard, FeatureGuard, DemoReadOnlyGuard),
+    UseGuards(
+      AuthGuard,
+      RolesGuard,
+      AccountStatusGuard,
+      FeatureGuard,
+      DemoReadOnlyGuard,
+      ImpersonationReadOnlyGuard,
+    ),
   );
 }
