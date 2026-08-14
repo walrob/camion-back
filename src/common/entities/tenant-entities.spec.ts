@@ -31,6 +31,13 @@ const CATALOGO_GLOBAL: Record<string, string> = {
     'debe poder registrar acciones globales del superadmin, que no pertenecen ' +
     'a ninguna empresa. El filtrado por empresa lo hace AuditLogService de ' +
     'forma explícita según quién consulta.',
+  MpWebhookEvent:
+    'Aviso recibido de Mercado Pago. Cuando llega todavía NO se sabe de qué ' +
+    'empresa es: eso sale de consultar el pago contra la API de MP, que es ' +
+    'justamente lo que hace el procesamiento. Guarda `companyId` nullable ' +
+    'para dejar constancia de a quién terminó imputándose, pero no puede ' +
+    'heredar de TenantEntity porque entonces no habría forma de insertar la ' +
+    'fila —que es el candado de idempotencia— antes de saber la empresa.',
 };
 
 describe('Modelo multi-empresa', () => {
@@ -124,6 +131,11 @@ describe('Modelo multi-empresa', () => {
       'Invite.token',
       // El token identifica un dispositivo, que no puede estar en dos empresas.
       'DeviceToken.token',
+      // Identificador del pago en Mercado Pago. Es único en MP, no en FleetLog,
+      // y **tiene que ser global**: es lo que impide acreditar dos veces un
+      // aviso repetido (R9.2). Scoparlo por empresa lo volvería inútil, porque
+      // cuando llega el aviso todavía no se sabe de qué empresa es el pago.
+      'Payment.mpPaymentId',
     ];
 
     const globalesInesperados: string[] = [];

@@ -30,6 +30,8 @@ import { CompaniesModule } from './companies/companies.module';
 import { PlansModule } from './plans/plans.module';
 import { BillingModule } from './billing/billing.module';
 import { InvitesModule } from './invites/invites.module';
+import { MpPaymentsModule } from './mp-payments/mp-payments.module';
+import { WebhooksModule } from './webhooks/webhooks.module';
 import { SuperadminModule } from './superadmin/superadmin.module';
 import { AuditLogModule } from './audit-log/audit-log.module';
 import { TenantModule } from './common/tenant/tenant.module';
@@ -120,6 +122,10 @@ import { TenantContextMiddleware } from './common/tenant/tenant-context.middlewa
     FuelModule,
     OeaModule,
     BillingModule,
+    MpPaymentsModule,
+    // Va después de MpPaymentsModule: es quien recibe los avisos que aquél
+    // procesa.
+    WebhooksModule,
     InvitesModule,
     // Global: la auditoría la usan facturación, empresas y superadmin.
     AuditLogModule,

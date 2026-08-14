@@ -38,6 +38,39 @@ export enum PaymentMethod {
   OTHER = 'other',
 }
 
+/**
+ * Estado de un pago según Mercado Pago.
+ *
+ * Se guarda el estado traducido y no el literal de MP porque MP tiene una
+ * decena de valores (`in_process`, `cancelled_by_user`, `charged_back`…) que
+ * significan lo mismo a los efectos de la cobranza. Sólo `PAID` acredita.
+ */
+export enum PaymentStatusMp {
+  PAID = 'paid',
+  PENDING = 'pending',
+  REJECTED = 'rejected',
+  REFUNDED = 'refunded',
+  CANCELED = 'canceled',
+}
+
+/**
+ * Estado del débito automático (preapproval) de una empresa.
+ *
+ * Es el estado que informa Mercado Pago, no una interpretación nuestra: si el
+ * cliente pausa o cancela la suscripción desde su cuenta de MP, el aviso llega
+ * por webhook y acá queda el motivo por el que dejó de cobrarse solo.
+ */
+export enum PreapprovalStatus {
+  /** Autorizado: MP debita en cada vencimiento. */
+  AUTHORIZED = 'authorized',
+  /** Creado, esperando que el cliente lo autorice. */
+  PENDING = 'pending',
+  /** Pausado por MP (por ejemplo, tras varios rechazos). */
+  PAUSED = 'paused',
+  /** Cancelado por el cliente o por nosotros. */
+  CANCELLED = 'cancelled',
+}
+
 /** Tipo de cambio registrado en el histórico comercial de una empresa. */
 export enum PlanUpdateType {
   PLAN_UPGRADE = 'plan_upgrade',

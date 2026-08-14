@@ -14,6 +14,13 @@ export const AUDIT = {
   COMPANY_ADDON_REMOVED: 'company.addon_removed',
   BILLING_PERIOD_ISSUED: 'billing.period_issued',
   BILLING_PAYMENT_REGISTERED: 'billing.payment_registered',
+  /** Ciclo de mora (fase 9). El actor es el cron: se registra sin usuario. */
+  BILLING_COMPANY_DEFAULTED: 'billing.company_defaulted',
+  BILLING_COMPANY_BLOCKED: 'billing.company_blocked',
+  BILLING_COMPANY_REGULARIZED: 'billing.company_regularized',
+  /** Cobro automático por Mercado Pago. */
+  MP_PAYMENT_RECEIVED: 'mp.payment_received',
+  MP_SUBSCRIPTION_CHANGED: 'mp.subscription_changed',
   PLAN_UPDATED: 'plan.updated',
   IMPERSONATION_STARTED: 'superadmin.impersonation_started',
   SUPERADMIN_VIEWED_COMPANY: 'superadmin.viewed_company',

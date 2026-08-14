@@ -6,6 +6,8 @@ import { Company } from 'src/companies/entities/company.entity';
 import { CompanyStatus } from 'src/common/enums/companyStatus.enum';
 import { runAsCompany, runAsSystem } from 'src/common/tenant/tenant-context';
 import { BillingService } from './billing.service';
+import { DunningService } from './dunning.service';
+import { BillingNotificationsService } from './billing-notifications.service';
 
 /** Estados en los que una empresa sigue generando facturación. */
 const FACTURABLES = [
@@ -30,6 +32,8 @@ export class BillingCron {
     @InjectRepository(Company)
     private readonly companiesRepository: Repository<Company>,
     private readonly billing: BillingService,
+    private readonly dunning: DunningService,
+    private readonly avisos: BillingNotificationsService,
   ) {}
 
   /** Empresas que hay que procesar. Se lee en contexto de sistema. */
@@ -104,7 +108,17 @@ export class BillingCron {
             periodStart,
             periodEnd,
           );
-          if (sub) emitidos++;
+          if (!sub) return;
+
+          emitidos++;
+          // El aviso va después de emitir y fuera de la transacción de la
+          // emisión: un SMTP caído no puede impedir que se facture.
+          await this.avisos.periodoEmitido(empresa.id, {
+            periodStart: sub.periodStart,
+            periodEnd: sub.periodEnd,
+            amount: Number(sub.amount),
+            expiration: sub.expiration,
+          });
         });
       } catch (e) {
         this.logger.error(
@@ -118,5 +132,38 @@ export class BillingCron {
     this.logger.log(
       `Emisión diaria: ${emitidos} período(s) emitido(s), ${vencidas} vencido(s).`,
     );
+  }
+
+  /**
+   * Ciclo de mora, una vez por día.
+   *
+   * El orden es el que evita cortarle el sistema a alguien sin haberle avisado:
+   *
+   *  1. **Avisar** a quien se le termina la prueba (7, 3 y 1 día antes).
+   *  2. **Avisar** a quien vence en tres días (todavía no debe nada).
+   *  3. **Marcar la mora** de quien ya venció.
+   *  4. **Avisar internamente** de las cuentas que se bloquean mañana (R9.3).
+   *  5. **Bloquear** a quien agotó los diez días de gracia.
+   *
+   * Los cinco pasos son idempotentes: correr el cron dos veces el mismo día no
+   * cambia ningún estado ni duplica un aviso.
+   */
+  @Cron(CronExpression.EVERY_DAY_AT_5AM)
+  async cobranzaDiaria(): Promise<void> {
+    const hoy = new Date();
+
+    const trials = await this.dunning.avisarTrialsPorVencer(hoy);
+    const avisadas = await this.dunning.avisarVencimientosProximos(hoy);
+    const enMora = await this.dunning.marcarMorosas(hoy);
+    const porBloquear = await this.dunning.avisarBloqueosInminentes(hoy);
+    const bloqueadas = await this.dunning.bloquearMorosas(hoy);
+
+    if (trials || avisadas || enMora || porBloquear || bloqueadas) {
+      this.logger.log(
+        `Cobranza diaria: ${trials} aviso(s) de fin de prueba, ${avisadas} ` +
+          `aviso(s) de vencimiento, ${enMora} nueva(s) en mora, ` +
+          `${porBloquear} por bloquearse mañana, ${bloqueadas} bloqueada(s).`,
+      );
+    }
   }
 }

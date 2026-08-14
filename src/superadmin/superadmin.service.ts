@@ -10,6 +10,7 @@ import { Plan } from 'src/plans/entities/plan.entity';
 import { CompanyStatus } from 'src/common/enums/companyStatus.enum';
 import { BillingStatus } from 'src/common/enums/billing.enum';
 import { BillingService } from 'src/billing/billing.service';
+import { DunningService } from 'src/billing/dunning.service';
 import { PlanContextService } from 'src/plans/plan-context.service';
 import { runAsCompany, runAsSystem } from 'src/common/tenant/tenant-context';
 import { calcularPrecioMensual, Prepago } from 'src/billing/pricing.util';
@@ -31,6 +32,7 @@ export class SuperadminService {
     @InjectRepository(Plan)
     private readonly plansRepository: Repository<Plan>,
     private readonly billing: BillingService,
+    private readonly dunning: DunningService,
     private readonly planContext: PlanContextService,
   ) {}
 
@@ -254,11 +256,21 @@ export class SuperadminService {
     });
   }
 
-  /** Marca un período como cobrado. */
+  /**
+   * Marca un período como cobrado.
+   *
+   * Conciliar una transferencia a mano tiene que levantar el bloqueo igual que
+   * lo hace un pago por Mercado Pago: para el cliente que pagó, que su plata
+   * haya entrado por una vía o por otra no es una diferencia que le importe.
+   */
   async marcarPagada(companyId: string, subscriptionId: string) {
-    return runAsCompany(companyId, () =>
+    const sub = await runAsCompany(companyId, () =>
       this.billing.marcarPagada(subscriptionId),
     );
+
+    await this.dunning.regularizar(companyId);
+
+    return sub;
   }
 
   /** ABM de planes sin deploy: es el motivo de que los precios vivan en la base. */

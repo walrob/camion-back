@@ -9,6 +9,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { CompanyStatus } from 'src/common/enums/companyStatus.enum';
+import { PreapprovalStatus } from 'src/common/enums/billing.enum';
 import { StorageAddon } from 'src/common/enums/storageAddon.enum';
 import { Plan } from 'src/plans/entities/plan.entity';
 
@@ -155,6 +156,43 @@ export class Company {
    */
   @Column({ default: 'mensual' })
   prepay: string;
+
+  // --- Cobro automático (Mercado Pago) ---
+
+  /**
+   * Suscripción recurrente de Mercado Pago. NULL = la empresa paga a mano.
+   *
+   * FleetLog cobra con **una sola cuenta de MP** (la propia), no con
+   * marketplace: acá no hay un vendedor por tenant al que haya que vincularle
+   * su cuenta, así que no hacen falta tokens por empresa ni OAuth.
+   */
+  @Column({ type: 'varchar', length: 64, nullable: true, default: null })
+  mpPreapprovalId: string | null;
+
+  /** Último estado informado por MP para ese débito automático. */
+  @Column({
+    type: 'enum',
+    enum: PreapprovalStatus,
+    nullable: true,
+    default: null,
+  })
+  mpPreapprovalStatus: PreapprovalStatus | null;
+
+  /** Email con el que se creó la suscripción en MP (el pagador). */
+  @Column({ type: 'varchar', nullable: true, default: null })
+  mpPayerEmail: string | null;
+
+  /**
+   * Cuándo entró en mora. Es lo que cuenta los días de gracia antes del
+   * bloqueo (decisión D9).
+   *
+   * Se guarda en vez de derivarlo del período vencido más viejo porque la
+   * gracia corre desde que **la empresa** entró en mora, no desde cada factura:
+   * si no, emitir un período nuevo mientras está en mora reiniciaría el reloj o
+   * lo adelantaría, según cuál se mirara.
+   */
+  @Column({ type: 'timestamp', nullable: true, default: null })
+  defaultedAt: Date | null;
 
   // --- Consumo ---
 

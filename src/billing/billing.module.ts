@@ -14,7 +14,10 @@ import { CompanyPlanUpdate } from './entities/company-plan-update.entity';
 import { BillingService } from './billing.service';
 import { BillingCron } from './billing.cron';
 import { BillingController } from './billing.controller';
+import { DunningService } from './dunning.service';
+import { BillingNotificationsService } from './billing-notifications.service';
 import { AuthModule } from 'src/auth/auth.module';
+import { NotificationsModule } from 'src/notifications/notifications.module';
 
 /**
  * Facturación: emisión de períodos, prorrateos, add-ons y cambios de plan.
@@ -38,9 +41,16 @@ import { AuthModule } from 'src/auth/auth.module';
     TypeOrmModule.forFeature([Company, Plan, Addon]),
     // El controlador usa @Auth(): necesita el JwtModule que exporta AuthModule.
     forwardRef(() => AuthModule),
+    // Los avisos de cobranza de la fase 9 (emisión, mora, bloqueo).
+    NotificationsModule,
   ],
   controllers: [BillingController],
-  providers: [BillingService, BillingCron],
-  exports: [BillingService],
+  providers: [
+    BillingService,
+    BillingCron,
+    DunningService,
+    BillingNotificationsService,
+  ],
+  exports: [BillingService, DunningService, BillingNotificationsService],
 })
 export class BillingModule {}

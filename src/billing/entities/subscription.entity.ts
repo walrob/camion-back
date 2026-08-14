@@ -39,6 +39,10 @@ export interface BilledUnitsSnapshot extends UnidadesFacturables {
  */
 @Entity('subscriptions')
 @Index(['companyId', 'periodStart'])
+// Un período, una sola factura (R9.1). Se declara acá además de en la migración
+// para que los metadatos de TypeORM reflejen la base: si no, la próxima
+// `migration:generate` propondría borrar el índice por considerarlo de más.
+@Index(['companyId', 'periodKey'], { unique: true })
 export class Subscription extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -123,6 +127,37 @@ export class Subscription extends TenantEntity {
    */
   @Column({ default: false })
   isProrated: boolean;
+
+  /**
+   * Clave de unicidad del período, calculada por la base (R9.1).
+   *
+   * Vale `periodStart` para un período normal vigente y **NULL** para los
+   * prorrateos, los anulados y los borrados. Sobre ella hay un índice único
+   * `(companyId, periodKey)`, y como MySQL admite repetir NULL en un índice
+   * único, el efecto es exactamente el que se busca:
+   *
+   *  - una empresa **no puede** tener dos veces el mismo período facturado, ni
+   *    aunque el cron corra dos veces o se emita a mano en paralelo;
+   *  - **sí puede** tener varios prorrateos el mismo día (un upgrade y un
+   *    add-on son dos cargos legítimos con la misma fecha);
+   *  - un período mal emitido se anula (`VOID`) y se vuelve a emitir, que es lo
+   *    que dice el contrato de esta entidad.
+   *
+   * Está en la base y no sólo en el código porque una doble facturación es un
+   * error que el cliente ve en su resumen: el chequeo previo de
+   * `emitirPeriodo()` evita el caso normal, el índice evita el simultáneo.
+   */
+  @Column({
+    type: 'date',
+    nullable: true,
+    select: false,
+    insert: false,
+    update: false,
+    generatedType: 'STORED',
+    asExpression:
+      "(case when `isProrated` = 0 and `deletedAt` is null and `status` <> 'void' then `periodStart` else null end)",
+  })
+  periodKey: Date | null;
 
   @Column({ nullable: true })
   notes: string;

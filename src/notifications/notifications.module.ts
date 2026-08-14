@@ -8,6 +8,8 @@ import { NotificationsController } from './notifications.controller';
   imports: [forwardRef(() => AuthModule)],
   controllers: [NotificationsController],
   providers: [NotificationsService, EmailService],
-  exports: [NotificationsService],
+  // `EmailService` se exporta para la cobranza de la fase 9: los avisos de
+  // emisión, mora y bloqueo salen de los crons de facturación.
+  exports: [NotificationsService, EmailService],
 })
 export class NotificationsModule {}
