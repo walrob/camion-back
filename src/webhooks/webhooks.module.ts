@@ -16,5 +16,8 @@ import { WebhooksService } from './webhooks.service';
   imports: [TypeOrmModule.forFeature([MpWebhookEvent]), MpPaymentsModule],
   controllers: [WebhooksController],
   providers: [WebhooksService],
+  // El panel de plataforma reprocesa un aviso fallido por el mismo camino que
+  // usa el reenvío de MP, candado de idempotencia incluido.
+  exports: [WebhooksService],
 })
 export class WebhooksModule {}

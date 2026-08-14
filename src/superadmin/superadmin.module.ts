@@ -5,9 +5,12 @@ import { Plan } from 'src/plans/entities/plan.entity';
 import { User } from 'src/users/entities/user.entity';
 import { AuthModule } from 'src/auth/auth.module';
 import { BillingModule } from 'src/billing/billing.module';
+import { MpWebhookEvent } from 'src/billing/entities/mp-webhook-event.entity';
+import { WebhooksModule } from 'src/webhooks/webhooks.module';
 import { SuperadminService } from './superadmin.service';
 import { SuperadminController } from './superadmin.controller';
 import { ImpersonationService } from './impersonation.service';
+import { SuperadminSeeder } from './superadmin.seeder';
 
 /**
  * Operación de la plataforma.
@@ -19,12 +22,14 @@ import { ImpersonationService } from './impersonation.service';
  */
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Company, Plan, User]),
+    TypeOrmModule.forFeature([Company, Plan, User, MpWebhookEvent]),
     forwardRef(() => AuthModule),
     BillingModule,
+    // Reproceso de un aviso de MP que falló, desde el panel.
+    WebhooksModule,
   ],
   controllers: [SuperadminController],
-  providers: [SuperadminService, ImpersonationService],
+  providers: [SuperadminService, ImpersonationService, SuperadminSeeder],
   exports: [SuperadminService],
 })
 export class SuperadminModule {}

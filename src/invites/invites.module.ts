@@ -4,6 +4,7 @@ import { Invite } from './entities/invite.entity';
 import { InvitesService } from './invites.service';
 import { InvitesController } from './invites.controller';
 import { AuthModule } from 'src/auth/auth.module';
+import { NotificationsModule } from 'src/notifications/notifications.module';
 
 /**
  * Invitaciones para sumar gente a una empresa.
@@ -16,6 +17,8 @@ import { AuthModule } from 'src/auth/auth.module';
   imports: [
     TenantTypeOrmModule.forFeature([Invite]),
     forwardRef(() => AuthModule),
+    // El mail con el link: sin él la invitación hay que pasarla a mano.
+    NotificationsModule,
   ],
   controllers: [InvitesController],
   providers: [InvitesService],

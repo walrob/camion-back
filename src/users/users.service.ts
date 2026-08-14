@@ -47,6 +47,10 @@ export class UsersService {
         'profileImage',
         'isTemplateDark',
         'isDemo',
+        // Sin esto el login rechazaría a TODO el mundo: la lista es explícita,
+        // así que una columna ausente llega como `undefined` y se lee igual que
+        // una casilla sin confirmar.
+        'emailVerifiedAt',
         // La empresa y su estado comercial viajan en el JWT: son el eje del
         // aislamiento entre empresas.
         'companyId',

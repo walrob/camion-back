@@ -23,12 +23,27 @@ export class AuditLogController {
     @ActiveUser() user: ActiveUserInterface,
     @Query('companyId') companyId?: string,
     @Query('action') action?: string,
+    @Query('search') search?: string,
+    @Query('desde') desde?: string,
+    @Query('hasta') hasta?: string,
+    @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
     return this.auditLog.listar(user, {
       companyId,
       action,
-      limit: limit ? Number(limit) : undefined,
+      search,
+      desde,
+      hasta,
+      page: Number(page),
+      limit: Number(limit),
     });
+  }
+
+  @Get('actions')
+  @Auth(Role.SUPERADMIN, Role.ADMIN, Role.AUDITOR)
+  @ApiOperation({ summary: 'Acciones distintas presentes en el registro.' })
+  acciones(@ActiveUser() user: ActiveUserInterface) {
+    return this.auditLog.accionesRegistradas(user);
   }
 }

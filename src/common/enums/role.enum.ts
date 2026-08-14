@@ -15,3 +15,21 @@ export enum Role {
   HR = 'hr',
   AUDITOR = 'auditor',
 }
+
+/**
+ * Cómo se nombra cada rol de cara al usuario.
+ *
+ * Vive acá porque el mail de invitación se arma en el backend y tiene que decir
+ * "Despachante", no `dispatcher`. Los textos son los mismos que muestra el
+ * front en la pantalla de aceptación.
+ */
+export const ROLE_LABELS: Record<Role, string> = {
+  [Role.SUPERADMIN]: 'Superadministrador',
+  [Role.ADMIN]: 'Administrador',
+  [Role.MANAGER]: 'Gerencia',
+  [Role.DISPATCHER]: 'Despachante',
+  [Role.MAINTENANCE]: 'Taller',
+  [Role.DRIVER]: 'Chofer',
+  [Role.HR]: 'Recursos Humanos',
+  [Role.AUDITOR]: 'Auditoría',
+};

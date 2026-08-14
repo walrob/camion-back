@@ -7,6 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Company } from 'src/companies/entities/company.entity';
 import { Plan } from 'src/plans/entities/plan.entity';
+import { MpWebhookEvent } from 'src/billing/entities/mp-webhook-event.entity';
 import { CompanyStatus } from 'src/common/enums/companyStatus.enum';
 import { BillingStatus } from 'src/common/enums/billing.enum';
 import { BillingService } from 'src/billing/billing.service';
@@ -14,6 +15,10 @@ import { DunningService } from 'src/billing/dunning.service';
 import { PlanContextService } from 'src/plans/plan-context.service';
 import { runAsCompany, runAsSystem } from 'src/common/tenant/tenant-context';
 import { calcularPrecioMensual, Prepago } from 'src/billing/pricing.util';
+import {
+  leerPaginacion,
+  metaDePaginacion,
+} from 'src/common/utils/meta-paginacion.util';
 
 const GB = 1024 * 1024 * 1024;
 
@@ -31,6 +36,8 @@ export class SuperadminService {
     private readonly companiesRepository: Repository<Company>,
     @InjectRepository(Plan)
     private readonly plansRepository: Repository<Plan>,
+    @InjectRepository(MpWebhookEvent)
+    private readonly eventosMpRepository: Repository<MpWebhookEvent>,
     private readonly billing: BillingService,
     private readonly dunning: DunningService,
     private readonly planContext: PlanContextService,
@@ -129,8 +136,25 @@ export class SuperadminService {
     });
   }
 
-  /** Listado de empresas con sus métricas de uso. */
-  async listarEmpresas(filtros: { estado?: string; plan?: string } = {}) {
+  /**
+   * Listado de empresas con sus métricas de uso, paginado.
+   *
+   * La paginación no es cosmética: por cada empresa se cuentan usuarios y
+   * unidades con dos consultas más, así que un listado sin techo hace crecer el
+   * costo con la cartera. Con cien clientes serían doscientas consultas por
+   * abrir la pantalla.
+   */
+  async listarEmpresas(
+    filtros: {
+      estado?: string;
+      plan?: string;
+      search?: string;
+      page?: number;
+      limit?: number;
+    } = {},
+  ) {
+    const { page, limit, offset } = leerPaginacion(filtros.page, filtros.limit);
+
     return runAsSystem(async () => {
       const qb = this.companiesRepository
         .createQueryBuilder('c')
@@ -151,12 +175,22 @@ export class SuperadminService {
 
       if (filtros.estado) qb.andWhere('c.status = :estado', { estado: filtros.estado });
       if (filtros.plan) qb.andWhere('p.code = :plan', { plan: filtros.plan });
+      if (filtros.search) {
+        qb.andWhere(
+          '(LOWER(c.name) LIKE LOWER(:q) OR LOWER(c.slug) LIKE LOWER(:q) ' +
+            'OR c.cuit LIKE :q)',
+          { q: `%${filtros.search}%` },
+        );
+      }
 
-      const filas = await qb.getRawMany();
+      // `getCount()` sobre un query con `select` crudo cuenta filas de `c`, que
+      // es lo que se quiere: el join con Plan es 1 a 1.
+      const total = await qb.getCount();
+      const filas = await qb.limit(limit).offset(offset).getRawMany();
 
       // El conteo de unidades y usuarios se hace por empresa: son consultas
-      // chicas y el listado del superadmin no es una pantalla de alto tráfico.
-      return Promise.all(
+      // chicas y, ya paginado, son a lo sumo dos por fila de la página visible.
+      const items = await Promise.all(
         filas.map(async (f) => {
           const [{ n: usuarios }] = await this.companiesRepository.query(
             'SELECT COUNT(*) AS n FROM `user` WHERE `companyId` = ? AND `deletedAt` IS NULL',
@@ -176,6 +210,11 @@ export class SuperadminService {
           };
         }),
       );
+
+      return {
+        items,
+        meta: metaDePaginacion(total, items.length, page, limit),
+      };
     });
   }
 
@@ -309,16 +348,189 @@ export class SuperadminService {
   }
 
   /** Cobranza: períodos impagos de todas las empresas. */
-  async cobranzas() {
-    return runAsSystem(() =>
-      this.companiesRepository.query(
+  async cobranzas(filtros: { page?: number; limit?: number } = {}) {
+    const { page, limit, offset } = leerPaginacion(filtros.page, filtros.limit);
+
+    return runAsSystem(async () => {
+      const [{ n: total }] = await this.companiesRepository.query(
+        'SELECT COUNT(*) AS n FROM `subscriptions` s ' +
+          'WHERE s.`isPaid` = 0 AND s.`deletedAt` IS NULL',
+      );
+
+      const items = await this.companiesRepository.query(
         'SELECT s.`id`, s.`companyId`, c.`name` AS companyName, s.`periodStart`, ' +
           's.`periodEnd`, s.`expiration`, s.`amount`, s.`status`, s.`isProrated` ' +
           'FROM `subscriptions` s ' +
           'JOIN `companies` c ON c.`id` = s.`companyId` ' +
           'WHERE s.`isPaid` = 0 AND s.`deletedAt` IS NULL ' +
-          'ORDER BY s.`expiration` ASC',
-      ),
+          'ORDER BY s.`expiration` ASC ' +
+          'LIMIT ? OFFSET ?',
+        [limit, offset],
+      );
+
+      // Los totales se calculan sobre TODO lo impago, no sobre la página: un
+      // "por cobrar" que cambia al pasar de página no es un número que sirva
+      // para tomar ninguna decisión.
+      const [totales] = await this.companiesRepository.query(
+        'SELECT COALESCE(SUM(s.`amount`), 0) AS total, ' +
+          'COALESCE(SUM(CASE WHEN s.`expiration` < CURDATE() THEN s.`amount` ELSE 0 END), 0) AS vencido ' +
+          'FROM `subscriptions` s ' +
+          'WHERE s.`isPaid` = 0 AND s.`deletedAt` IS NULL',
+      );
+
+      return {
+        items,
+        totales: {
+          porCobrar: Number(totales.total),
+          vencido: Number(totales.vencido),
+        },
+        meta: metaDePaginacion(Number(total), items.length, page, limit),
+      };
+    });
+  }
+
+  /**
+   * Todos los pagos registrados, de cualquier empresa y por cualquier vía.
+   *
+   * Mezcla a propósito los cobros de Mercado Pago con las transferencias
+   * conciliadas a mano: la pregunta que se responde acá —«¿entró la plata de
+   * este cliente?»— no distingue por dónde entró, y tener dos listados
+   * separados obliga a mirar los dos para contestarla.
+   */
+  async pagos(
+    filtros: {
+      companyId?: string;
+      estado?: string;
+      metodo?: string;
+      search?: string;
+      page?: number;
+      limit?: number;
+    } = {},
+  ) {
+    const { page, limit, offset } = leerPaginacion(filtros.page, filtros.limit);
+
+    const condiciones = ['p.`deletedAt` IS NULL'];
+    const params: unknown[] = [];
+
+    if (filtros.companyId) {
+      condiciones.push('p.`companyId` = ?');
+      params.push(filtros.companyId);
+    }
+    if (filtros.estado) {
+      condiciones.push('p.`status` = ?');
+      params.push(filtros.estado);
+    }
+    if (filtros.metodo) {
+      condiciones.push('p.`method` = ?');
+      params.push(filtros.metodo);
+    }
+    if (filtros.search) {
+      condiciones.push(
+        '(LOWER(c.`name`) LIKE LOWER(?) OR p.`mpPaymentId` LIKE ? ' +
+          'OR p.`reference` LIKE ?)',
+      );
+      const q = `%${filtros.search}%`;
+      params.push(q, q, q);
+    }
+
+    const where = condiciones.join(' AND ');
+
+    return runAsSystem(async () => {
+      const [{ n: total }] = await this.companiesRepository.query(
+        'SELECT COUNT(*) AS n FROM `payments` p ' +
+          'JOIN `companies` c ON c.`id` = p.`companyId` ' +
+          `WHERE ${where}`,
+        params,
+      );
+
+      const items = await this.companiesRepository.query(
+        'SELECT p.`id`, p.`companyId`, c.`name` AS companyName, p.`paidAt`, ' +
+          'p.`amount`, p.`method`, p.`status`, p.`reference`, p.`receiptUrl`, ' +
+          'p.`mpPaymentId`, p.`mpPreapprovalId`, p.`createdAt`, ' +
+          's.`periodStart`, s.`periodEnd` ' +
+          'FROM `payments` p ' +
+          'JOIN `companies` c ON c.`id` = p.`companyId` ' +
+          'LEFT JOIN `subscriptions` s ON s.`id` = p.`subscriptionId` ' +
+          `WHERE ${where} ` +
+          'ORDER BY p.`createdAt` DESC ' +
+          'LIMIT ? OFFSET ?',
+        [...params, limit, offset],
+      );
+
+      return {
+        items,
+        meta: metaDePaginacion(Number(total), items.length, page, limit),
+      };
+    });
+  }
+
+  /**
+   * Avisos recibidos de Mercado Pago, con su resultado.
+   *
+   * Es la única ventana a los cobros que **no** terminaron de acreditarse. Un
+   * aviso con `error` y sin `processedAt` es plata que el cliente pagó y el
+   * sistema todavía no reconoce: mientras eso no se vea, el cliente se entera
+   * primero, por un bloqueo que no le corresponde.
+   */
+  async avisosDeMp(
+    filtros: {
+      soloErrores?: boolean;
+      type?: string;
+      page?: number;
+      limit?: number;
+    } = {},
+  ) {
+    const { page, limit, offset } = leerPaginacion(filtros.page, filtros.limit);
+
+    const condiciones: string[] = [];
+    const params: unknown[] = [];
+
+    // "Pendiente" incluye tanto el que falló con un motivo escrito como el que
+    // quedó a medias sin llegar a registrarlo: los dos terminan en un pago sin
+    // acreditar, que es lo que se está buscando.
+    if (filtros.soloErrores) condiciones.push('e.`processedAt` IS NULL');
+    if (filtros.type) {
+      condiciones.push('e.`type` = ?');
+      params.push(filtros.type);
+    }
+
+    const where = condiciones.length ? `WHERE ${condiciones.join(' AND ')}` : '';
+
+    return runAsSystem(async () => {
+      const [{ n: total }] = await this.companiesRepository.query(
+        `SELECT COUNT(*) AS n FROM \`mp_webhook_events\` e ${where}`,
+        params,
+      );
+
+      const items = await this.companiesRepository.query(
+        'SELECT e.`id`, e.`createdAt`, e.`type`, e.`resourceId`, ' +
+          'e.`processedAt`, e.`error`, e.`companyId`, c.`name` AS companyName ' +
+          'FROM `mp_webhook_events` e ' +
+          'LEFT JOIN `companies` c ON c.`id` = e.`companyId` ' +
+          `${where} ` +
+          'ORDER BY e.`createdAt` DESC ' +
+          'LIMIT ? OFFSET ?',
+        [...params, limit, offset],
+      );
+
+      const [{ n: pendientes }] = await this.companiesRepository.query(
+        'SELECT COUNT(*) AS n FROM `mp_webhook_events` WHERE `processedAt` IS NULL',
+      );
+
+      return {
+        items,
+        pendientes: Number(pendientes),
+        meta: metaDePaginacion(Number(total), items.length, page, limit),
+      };
+    });
+  }
+
+  /** Un aviso puntual, para saber qué reprocesar. */
+  async avisoDeMp(id: string): Promise<MpWebhookEvent> {
+    const evento = await runAsSystem(() =>
+      this.eventosMpRepository.findOne({ where: { id } }),
     );
+    if (!evento) throw new NotFoundException('Aviso no encontrado.');
+    return evento;
   }
 }

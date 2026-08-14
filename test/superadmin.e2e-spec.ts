@@ -42,8 +42,8 @@ describe('Superadmin', () => {
     // La migración no siembra el usuario si faltan las variables de entorno,
     // así que en los tests se crea acá sobre la empresa plataforma.
     await ds.query(
-      'INSERT INTO `user` (`id`,`companyId`,`email`,`name`,`password`,`role`) ' +
-        "VALUES (UUID(), ?, ?, 'Super', ?, 'superadmin')",
+      'INSERT INTO `user` (`id`,`companyId`,`email`,`name`,`password`,`role`,`emailVerifiedAt`) ' +
+        "VALUES (UUID(), ?, ?, 'Super', ?, 'superadmin', NOW())",
       [PLATAFORMA_ID, EMAIL_SUPER, await bcryptjs.hash(PASSWORD, 10)],
     );
 
@@ -94,14 +94,14 @@ describe('Superadmin', () => {
       const res = await conSuper('get', '/api/v1/superadmin/companies');
       expect(res.status).toBe(200);
 
-      const ids = res.body.map((c: { id: string }) => c.id);
+      const ids = res.body.items.map((c: { id: string }) => c.id);
       expect(ids).toContain(EMPRESA_A);
       expect(ids).toContain(EMPRESA_B);
     });
 
     it('la empresa plataforma no aparece como cliente', async () => {
       const res = await conSuper('get', '/api/v1/superadmin/companies');
-      const ids = res.body.map((c: { id: string }) => c.id);
+      const ids = res.body.items.map((c: { id: string }) => c.id);
       expect(ids).not.toContain(PLATAFORMA_ID);
     });
 
@@ -111,6 +111,67 @@ describe('Superadmin', () => {
       expect(typeof res.body.mrr).toBe('number');
       expect(res.body.empresas).toBeGreaterThanOrEqual(2);
       expect(res.body.porEstado).toBeDefined();
+    });
+  });
+
+  /**
+   * Pagos y avisos de Mercado Pago.
+   *
+   * La segunda consulta es la única ventana a los cobros que **no** terminaron
+   * de acreditarse: un aviso sin procesar es plata que el cliente pagó y que,
+   * mientras nadie la vea, deriva en un bloqueo que no le corresponde.
+   */
+  describe('Pagos y avisos de Mercado Pago', () => {
+    it.each([
+      '/api/v1/superadmin/payments',
+      '/api/v1/superadmin/mp-events',
+    ])('un admin de empresa recibe 403 en %s', async (url) => {
+      const res = await conAdmin('get', url);
+      expect(res.status).toBe(403);
+    });
+
+    it('los pagos vienen paginados y con el nombre de la empresa', async () => {
+      const res = await conSuper('get', '/api/v1/superadmin/payments?limit=5');
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body.items)).toBe(true);
+      expect(res.body.meta.itemsPerPage).toBe(5);
+      for (const p of res.body.items) {
+        expect(p.companyName).toBeDefined();
+      }
+    });
+
+    it('los avisos informan cuántos quedaron sin procesar', async () => {
+      const res = await conSuper('get', '/api/v1/superadmin/mp-events');
+      expect(res.status).toBe(200);
+      expect(typeof res.body.pendientes).toBe('number');
+      expect(res.body.meta).toBeDefined();
+    });
+
+    it('`soloErrores` deja únicamente los que no terminaron', async () => {
+      await ds.query(
+        'INSERT INTO `mp_webhook_events` (`id`,`type`,`resourceId`,`error`) ' +
+          "VALUES (UUID(), 'payment', ?, 'MP no respondió')",
+        [`e2e-${Date.now()}`],
+      );
+
+      const res = await conSuper(
+        'get',
+        '/api/v1/superadmin/mp-events?soloErrores=1',
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.body.items.length).toBeGreaterThan(0);
+      for (const a of res.body.items) {
+        expect(a.processedAt).toBeNull();
+      }
+    });
+
+    it('reprocesar un aviso inexistente da 404, no un 500', async () => {
+      const res = await conSuper(
+        'post',
+        '/api/v1/superadmin/mp-events/00000000-0000-4000-8000-000000000999/retry',
+      );
+      expect(res.status).toBe(404);
     });
   });
 
@@ -194,7 +255,7 @@ describe('Superadmin', () => {
       expect(res.status).toBe(200);
 
       // Pidió la de OTRA empresa: el filtro sale del token, no del parámetro.
-      const ajenos = res.body.filter(
+      const ajenos = res.body.items.filter(
         (l: { companyId: string }) => l.companyId !== EMPRESA_A,
       );
       expect(ajenos).toEqual([]);

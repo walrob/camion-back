@@ -1,18 +1,43 @@
-import { Injectable } from '@nestjs/common';
-import { MailerService } from '@nestjs-modules/mailer';
+import { Injectable, Logger } from '@nestjs/common';
+import { ISendMailOptions, MailerService } from '@nestjs-modules/mailer';
 
 @Injectable()
 export class EmailService {
+  private readonly logger = new Logger(EmailService.name);
+
   constructor(private readonly mailerService: MailerService) {}
 
+  /**
+   * Única salida de correo del sistema.
+   *
+   * Con `EMAIL_ENABLED=false` no manda nada y deja constancia en el log. Existe
+   * por los tests de integración: el alta de una empresa y cada invitación
+   * disparan un envío real, así que sin este interruptor la suite abre una
+   * conexión SMTP por caso —lenta, dependiente de la red y capaz de mandarle un
+   * correo a una dirección de verdad si alguien la usa como dato de prueba—.
+   *
+   * Se apaga sólo con el valor exacto `false`: una variable sin definir deja el
+   * correo andando, que es lo que hace falta en desarrollo y en producción.
+   */
+  private async despachar(opciones: ISendMailOptions): Promise<void> {
+    if (process.env.EMAIL_ENABLED === 'false') {
+      this.logger.log(
+        `[EMAIL_ENABLED=false] No se envía "${opciones.subject}" a ${String(opciones.to)}.`,
+      );
+      return;
+    }
+
+    await this.mailerService.sendMail(opciones);
+  }
+
   async sendEmail(to: string, subject: string, html: string) {
-    await this.mailerService.sendMail({ to, subject, html });
+    await this.despachar({ to, subject, html });
   }
 
   async sendEmailUserCreated(email: string) {
     const loginLink = `${process.env.FRONT_URL}/auth/login`;
 
-    await this.mailerService.sendMail({
+    await this.despachar({
       to: email,
       subject: 'Tu cuenta en FleetLog fue creada',
       html: `
@@ -48,7 +73,7 @@ export class EmailService {
       ? new Date(data.validUntil).toLocaleDateString('es-AR')
       : 'no especificada';
 
-    await this.mailerService.sendMail({
+    await this.despachar({
       to: email,
       subject: `Presupuesto ${data.number} - ${data.clientName}`,
       html: `
@@ -91,14 +116,15 @@ export class EmailService {
   // ───────────────────────── Cobranza (fase 9) ─────────────────────────────
 
   /**
-   * Cuerpo común de los avisos de cobranza.
+   * Cuerpo común de los avisos de la plataforma.
    *
-   * Los cinco mails del ciclo comercial (emisión, aviso de vencimiento, pago
-   * recibido, mora y bloqueo) comparten maquetado a propósito: son la misma
-   * conversación con el cliente, y que uno se vea distinto lo hace parecer
-   * phishing justo cuando se le está pidiendo plata.
+   * Los mails del ciclo comercial (emisión, aviso de vencimiento, pago
+   * recibido, mora y bloqueo) y los del alta (verificación, invitación)
+   * comparten maquetado a propósito: son la misma conversación con el cliente,
+   * y que uno se vea distinto lo hace parecer phishing justo cuando se le está
+   * pidiendo que haga clic o que pague.
    */
-  private plantillaCobranza(params: {
+  private plantilla(params: {
     titulo: string;
     color: string;
     cuerpo: string;
@@ -145,10 +171,10 @@ export class EmailService {
     to: string,
     datos: { periodStart: Date; periodEnd: Date; amount: number; expiration: Date },
   ) {
-    await this.mailerService.sendMail({
+    await this.despachar({
       to,
       subject: `Tu factura de FleetLog — ${this.fecha(datos.periodStart)}`,
-      html: this.plantillaCobranza({
+      html: this.plantilla({
         titulo: 'Se emitió tu período mensual',
         color: '#0b57d0',
         cuerpo: `
@@ -173,10 +199,10 @@ export class EmailService {
     to: string,
     datos: { amount: number; expiration: Date; dias: number },
   ) {
-    await this.mailerService.sendMail({
+    await this.despachar({
       to,
       subject: `Tu factura de FleetLog vence en ${datos.dias} día${datos.dias === 1 ? '' : 's'}`,
-      html: this.plantillaCobranza({
+      html: this.plantilla({
         titulo: 'Tenés un pago por vencer',
         color: '#b26a00',
         cuerpo: `
@@ -195,10 +221,10 @@ export class EmailService {
 
   /** Se acreditó un pago. */
   async sendPagoRecibido(to: string, datos: { amount: number; periodStart: Date }) {
-    await this.mailerService.sendMail({
+    await this.despachar({
       to,
       subject: 'Recibimos tu pago | FleetLog',
-      html: this.plantillaCobranza({
+      html: this.plantilla({
         titulo: '¡Pago acreditado!',
         color: '#1b7f45',
         cuerpo: `
@@ -219,10 +245,10 @@ export class EmailService {
     to: string,
     datos: { amount: number; diasDeGracia: number; bloqueaEl: Date },
   ) {
-    await this.mailerService.sendMail({
+    await this.despachar({
       to,
       subject: 'Tenés un pago vencido | FleetLog',
-      html: this.plantillaCobranza({
+      html: this.plantilla({
         titulo: 'Tu cuenta quedó con un pago vencido',
         color: '#b26a00',
         cuerpo: `
@@ -244,10 +270,10 @@ export class EmailService {
 
   /** Se agotó la gracia: la cuenta pasa a solo lectura. */
   async sendCuentaBloqueada(to: string, datos: { amount: number }) {
-    await this.mailerService.sendMail({
+    await this.despachar({
       to,
       subject: 'Tu cuenta de FleetLog pasó a solo lectura',
-      html: this.plantillaCobranza({
+      html: this.plantilla({
         titulo: 'Cuenta suspendida por falta de pago',
         color: '#b3261e',
         cuerpo: `
@@ -268,10 +294,10 @@ export class EmailService {
 
   /** Faltan 7, 3 o 1 días para que termine la prueba gratuita. */
   async sendTrialPorVencer(to: string, datos: { dias: number; terminaEl: Date }) {
-    await this.mailerService.sendMail({
+    await this.despachar({
       to,
       subject: `Te quedan ${datos.dias} día${datos.dias === 1 ? '' : 's'} de prueba en FleetLog`,
-      html: this.plantillaCobranza({
+      html: this.plantilla({
         titulo: `Tu prueba termina el ${this.fecha(datos.terminaEl)}`,
         color: '#0b57d0',
         cuerpo: `
@@ -311,10 +337,10 @@ export class EmailService {
       )
       .join('');
 
-    await this.mailerService.sendMail({
+    await this.despachar({
       to,
       subject: `[FleetLog] ${empresas.length} cuenta(s) por bloquearse mañana`,
-      html: this.plantillaCobranza({
+      html: this.plantilla({
         titulo: 'Cuentas a un día del bloqueo',
         color: '#b3261e',
         cuerpo: `
@@ -341,7 +367,7 @@ export class EmailService {
   async sendEmailResetPassword(email: string, token: string) {
     const resetLink = `${process.env.FRONT_URL}/auth/reset-password?token=${token}`;
 
-    await this.mailerService.sendMail({
+    await this.despachar({
       to: email,
       subject: 'Restablecé tu contraseña | FleetLog',
       html: `
@@ -359,6 +385,81 @@ export class EmailService {
         <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
         <p style="font-size: 13px; color: #777; margin: 0;">Saludos,<br/><strong>Equipo FleetLog</strong></p>
       </div>`,
+    });
+  }
+
+  /**
+   * Confirmación de la casilla en el alta pública.
+   *
+   * Es el único mail cuyo botón **desbloquea el acceso**: hasta que se toca, la
+   * cuenta existe pero no puede entrar. Por eso dice qué pasa si no se hace
+   * nada, en vez de dejar a alguien esperando frente a un login que lo rechaza
+   * sin explicar por qué.
+   */
+  async sendVerificacionEmail(
+    to: string,
+    datos: { token: string; nombre?: string; horas: number },
+  ) {
+    const link = `${process.env.FRONT_URL}/auth/verify-email?token=${datos.token}`;
+
+    await this.despachar({
+      to,
+      subject: 'Confirmá tu correo | FleetLog',
+      html: this.plantilla({
+        titulo: 'Confirmá tu correo para empezar',
+        color: '#0b57d0',
+        cuerpo: `
+          <p style="font-size: 16px; color: #333;">
+            ${datos.nombre ? `Hola ${datos.nombre}: ` : ''}tu cuenta de FleetLog
+            ya está creada. Falta un solo paso.
+          </p>
+          <p style="font-size: 14px; color: #555;">
+            Confirmá que esta casilla es tuya y entrás directo a tu prueba
+            gratuita. <strong>Hasta que lo hagas no vas a poder iniciar
+            sesión.</strong>
+          </p>`,
+        cta: { texto: 'Confirmar mi correo', url: link },
+      }),
+    });
+  }
+
+  /**
+   * Invitación a sumarse a una empresa ya existente.
+   *
+   * El asunto nombra a la empresa y no a FleetLog: quien lo recibe conoce a su
+   * empleador, no necesariamente al proveedor de software, y un asunto que sólo
+   * dice "FleetLog" se lee como publicidad y se borra.
+   */
+  async sendInvitacion(
+    to: string,
+    datos: {
+      token: string;
+      empresa: string;
+      rol: string;
+      invitadoPor?: string;
+      expiresAt: Date;
+    },
+  ) {
+    const link = `${process.env.FRONT_URL}/invite/${datos.token}`;
+
+    await this.despachar({
+      to,
+      subject: `${datos.empresa} te invitó a FleetLog`,
+      html: this.plantilla({
+        titulo: `Te sumaron a ${datos.empresa}`,
+        color: '#0b57d0',
+        cuerpo: `
+          <p style="font-size: 16px; color: #333;">
+            ${datos.invitadoPor ? `${datos.invitadoPor} te` : 'Te'} invitó a
+            usar FleetLog con <strong>${datos.empresa}</strong>, con el perfil
+            de <strong>${datos.rol}</strong>.
+          </p>
+          <p style="font-size: 14px; color: #555;">
+            Al aceptar elegís tu contraseña y entrás. El enlace vence el
+            <strong>${this.fecha(datos.expiresAt)}</strong>.
+          </p>`,
+        cta: { texto: 'Aceptar la invitación', url: link },
+      }),
     });
   }
 }

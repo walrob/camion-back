@@ -22,6 +22,9 @@ dotenv.config({ path: `.env.${process.env.NODE_ENV || 'development'}` });
 import { DataSource } from 'typeorm';
 import * as bcryptjs from 'bcryptjs';
 
+import { TenantSubscriber } from '../common/tenant/tenant.subscriber';
+import { runAsSystem, tenantStorage } from '../common/tenant/tenant-context';
+
 import { User } from '../users/entities/user.entity';
 import { Attachment } from '../common/attachments/entities/attachment.entity';
 import { Fleet } from '../fleet/entities/fleet.entity';
@@ -118,6 +121,68 @@ const PASSWORD = 'Fleet1234!';
 /** Contraseña simple para las cuentas demo (fácil de compartir con clientes). */
 const DEMO_PASSWORD = 'demo1234';
 
+/** Empresa a la que pertenecen los datos de prueba. */
+const EMPRESA_DEMO = {
+  name: 'Transportes del Norte S.R.L.',
+  slug: 'transportes-del-norte',
+  cuit: '30712345678',
+};
+
+/**
+ * Empresa dueña de todo lo que se siembra.
+ *
+ * Desde la fase 1 no hay dato de negocio sin empresa: `companyId` es NOT NULL en
+ * 28 tablas.
+ *
+ * **Adopta la empresa que dejó la migración** (`Empresa principal`, el destino
+ * del backfill) en lugar de crear otra al lado. Si creara una nueva, el entorno
+ * de desarrollo quedaría con dos empresas cliente: una con todos los datos y
+ * otra vacía, que además es la que elige `UsersSeeder` para poner el admin
+ * inicial. La empresa plataforma nunca se toca.
+ *
+ * Se le asigna el plan más completo para poder recorrer todos los módulos sin
+ * chocar contra el gating.
+ */
+async function resolverEmpresa(dataSource: DataSource): Promise<string> {
+  const [plan] = await dataSource.query(
+    "SELECT `id` FROM `plans` WHERE `code` = 'corporate' LIMIT 1",
+  );
+
+  const [existente] = await dataSource.query(
+    'SELECT `id`, `slug` FROM `companies` WHERE `isPlatform` = 0 ' +
+      'ORDER BY `createdAt` ASC LIMIT 1',
+  );
+
+  if (existente) {
+    if (existente.slug !== EMPRESA_DEMO.slug) {
+      await dataSource.query(
+        'UPDATE `companies` SET `name` = ?, `slug` = ?, `cuit` = ?, ' +
+          "`status` = 'active', `planId` = ?, `onboardingStep` = 0 WHERE `id` = ?",
+        [
+          EMPRESA_DEMO.name,
+          EMPRESA_DEMO.slug,
+          EMPRESA_DEMO.cuit,
+          plan?.id ?? null,
+          existente.id,
+        ],
+      );
+      console.log(`🏢 Empresa adoptada y renombrada: ${EMPRESA_DEMO.name}`);
+    }
+    return existente.id;
+  }
+
+  const [{ id }] = await dataSource.query('SELECT UUID() AS id');
+
+  await dataSource.query(
+    'INSERT INTO `companies` (`id`,`name`,`slug`,`cuit`,`status`,`planId`,`billingDay`,`onboardingStep`) ' +
+      "VALUES (?,?,?,?,'active',?,1,0)",
+    [id, EMPRESA_DEMO.name, EMPRESA_DEMO.slug, EMPRESA_DEMO.cuit, plan?.id ?? null],
+  );
+
+  console.log(`🏢 Empresa creada: ${EMPRESA_DEMO.name}`);
+  return id;
+}
+
 async function run() {
   const dataSource = new DataSource({
     type: 'mysql',
@@ -126,40 +191,36 @@ async function run() {
     username: process.env.DB_USERNAME,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_DATABASE,
-    entities: [
-      User,
-      Attachment,
-      Fleet,
-      Truck,
-      Trailer,
-      Employee,
-      Certification,
-      TruckAssignment,
-      EmploymentMovement,
-      Driver,
-      Trip,
-      TripLogEntry,
-      Settlement,
-      Checklist,
-      ChecklistItem,
-      Incident,
-      IncidentEvent,
-      Alert,
-      AlertRuleConfig,
-      MaintenancePlan,
-      MaintenanceOrder,
-      Document,
-      Message,
-      DeviceToken,
-      FuelRecord,
-      OeaInspection,
-      OeaInspectionItem,
-    ],
-    synchronize: true, // crea las tablas si no existen (base local)
+
+    // Glob en vez de lista: `TenantEntity` referencia a `Company`, así que una
+    // lista parcial deja sin resolver la metadata de media docena de relaciones
+    // y la conexión ni siquiera abre.
+    entities: ['src/**/*.entity.ts'],
+
+    // El esquema lo crean las migraciones. Con `synchronize: true` este script
+    // pasaba a ser una segunda fuente de verdad del esquema, y la que menos
+    // sabe: no conoce los índices ni las columnas generadas que las migraciones
+    // sí crean.
+    synchronize: false,
   });
 
   await dataSource.initialize();
   console.log(`🔌 Conectado a ${process.env.DB_DATABASE}@${process.env.DB_HOST}`);
+
+  // Estampa `companyId` en cada insert; sin él habría que pasarlo a mano en las
+  // treinta y pico de escrituras de este archivo. Se instancia en lugar de
+  // declararse en `subscribers`: el constructor recibe el DataSource y se
+  // engancha solo, que es como lo inyecta Nest en la aplicación. Listarlo haría
+  // que TypeORM lo construya sin argumentos y falle.
+  new TenantSubscriber(dataSource);
+
+  const companyId = await runAsSystem(() => resolverEmpresa(dataSource));
+
+  // Fija la empresa para TODO lo que sigue, en vez de envolver cada bloque:
+  // el archivo entero siembra una sola empresa, y anidar treinta closures sólo
+  // para eso volvería ilegible el seed.
+  tenantStorage.enterWith({ companyId });
+  console.log(`🏢 Sembrando sobre ${EMPRESA_DEMO.name} (${companyId})`);
 
   const fleetRepo = dataSource.getRepository(Fleet);
 
@@ -238,6 +299,10 @@ async function run() {
         phone: data.phone,
         role: data.role,
         isDemo: data.isDemo ?? false,
+        // Sin esto el login los rechaza a todos: desde la fase 6 una casilla
+        // sin confirmar no entra, y a estas cuentas no hay a quién mandarle el
+        // mail de confirmación.
+        emailVerifiedAt: new Date(),
       });
     }
     return employeeRepo.save({

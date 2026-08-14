@@ -15,7 +15,9 @@ import { Company } from 'src/companies/entities/company.entity';
 import { CreateInviteDto } from './dto/create-invite.dto';
 import { AcceptInviteDto } from './dto/accept-invite.dto';
 import { LimitsService } from 'src/plans/limits.service';
+import { EmailService } from 'src/notifications/email/email.service';
 import { runAsSystem } from 'src/common/tenant/tenant-context';
+import { ROLE_LABELS } from 'src/common/enums/role.enum';
 
 /** Días de validez de una invitación. */
 const DIAS_DE_VALIDEZ = 7;
@@ -28,6 +30,7 @@ export class InvitesService {
     @InjectRepository(Invite)
     private readonly invitesRepository: Repository<Invite>,
     private readonly limitsService: LimitsService,
+    private readonly email: EmailService,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -41,7 +44,12 @@ export class InvitesService {
     companyId: string,
     dto: CreateInviteDto,
     invitadoPor?: string,
-  ): Promise<{ token: string; expiresAt: Date; email: string }> {
+  ): Promise<{
+    token: string;
+    expiresAt: Date;
+    email: string;
+    emailEnviado: boolean;
+  }> {
     const email = dto.email.toLowerCase();
 
     await this.limitsService.assertRolPermitido(companyId, dto.role);
@@ -80,11 +88,59 @@ export class InvitesService {
       }),
     );
 
-    // TODO (fase 9): enviar el mail con el link. Por ahora el token se devuelve
-    // para que el front lo muestre y se pueda compartir a mano.
     this.logger.log(`Invitación creada para ${email} (${dto.role}).`);
 
-    return { token: invite.token, expiresAt, email };
+    // El token se sigue devolviendo aunque el mail salga bien: es la salida
+    // cuando el correo cae en spam o la casilla está mal escrita, y le ahorra al
+    // administrador tener que anular y volver a invitar.
+    const emailEnviado = await this.enviarInvitacion(invite, companyId);
+
+    return { token: invite.token, expiresAt, email, emailEnviado };
+  }
+
+  /**
+   * Manda el mail con el link. **No propaga errores.**
+   *
+   * Si el SMTP está caído, la invitación ya existe y es válida: hacerla fallar
+   * obligaría a repetir el alta para nada. Se devuelve `false` y el front ofrece
+   * copiar el enlace a mano, que es exactamente lo que se hacía antes de que
+   * este envío existiera.
+   */
+  private async enviarInvitacion(
+    invite: Invite,
+    companyId: string,
+  ): Promise<boolean> {
+    try {
+      const company = await runAsSystem(() =>
+        this.dataSource
+          .getRepository(Company)
+          .findOne({ where: { id: companyId } }),
+      );
+
+      const quienInvita = invite.createdBy
+        ? await runAsSystem(() =>
+            this.dataSource
+              .getRepository(User)
+              .findOne({ where: { id: invite.createdBy } }),
+          )
+        : null;
+
+      await this.email.sendInvitacion(invite.email, {
+        token: invite.token,
+        empresa: company?.name ?? 'tu empresa',
+        rol: ROLE_LABELS[invite.role] ?? invite.role,
+        invitadoPor: quienInvita?.name,
+        expiresAt: invite.expiresAt,
+      });
+
+      return true;
+    } catch (e) {
+      this.logger.error(
+        `No se pudo enviar la invitación a ${invite.email}: ${String(e)}. ` +
+          'El link sigue siendo válido y se puede compartir a mano.',
+      );
+      return false;
+    }
   }
 
   /**
@@ -148,6 +204,10 @@ export class InvitesService {
             name: dto.name ?? invite.name ?? email,
             password: await bcryptjs.hash(dto.password, 10),
             role: invite.role,
+            // Nace verificado: llegar hasta acá exige el token, que sólo se
+            // conoce por el mail. Pedirle otra confirmación a quien ya probó
+            // tener la casilla sería un paso de más sin nada a cambio.
+            emailVerifiedAt: new Date(),
           } as Partial<User>),
         );
 

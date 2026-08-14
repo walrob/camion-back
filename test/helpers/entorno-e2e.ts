@@ -44,6 +44,12 @@ function prepararEnv(): void {
   process.env.DB_DATABASE = BASE_E2E;
   // Sin esto el seeder crearía un admin extra y ensuciaría los conteos.
   process.env.SEED_ADMIN_EMAIL = 'seed-noop@e2e.test';
+  // Ídem con el superadmin: la suite lo crea ella misma donde lo necesita.
+  delete process.env.SEED_SUPERADMIN_EMAIL;
+  delete process.env.SEED_SUPERADMIN_PASSWORD;
+  // Cada alta de empresa y cada invitación disparan un correo. Sin esto la
+  // suite abre una conexión SMTP por caso.
+  process.env.EMAIL_ENABLED = 'false';
 }
 
 async function recrearBase(): Promise<void> {
@@ -119,8 +125,12 @@ async function sembrar(ds: DataSource) {
 
   const crearUsuario = async (companyId: string, email: string) => {
     const id = uuidPara(companyId, 'user');
+    // `emailVerifiedAt` con fecha: el login rechaza las casillas sin
+    // confirmar, y estos usuarios se insertan directo sin pasar por el alta
+    // pública que manda el mail.
     await ds.query(
-      "INSERT INTO `user` (`id`,`companyId`,`email`,`name`,`password`,`role`) VALUES (?,?,?,'Admin',?, 'admin')",
+      'INSERT INTO `user` (`id`,`companyId`,`email`,`name`,`password`,`role`,`emailVerifiedAt`) ' +
+        "VALUES (?,?,?,'Admin',?,'admin',NOW())",
       [id, companyId, email, hash],
     );
     return id;

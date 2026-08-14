@@ -25,14 +25,11 @@ export class UsersSeeder implements OnApplicationBootstrap {
   ) {}
 
   async onApplicationBootstrap() {
-    const count = await this.usersRepository.count();
-    if (count > 0) return;
-
     // Todo usuario pertenece a una empresa. Se resuelve desde la base en lugar
     // de repetir el UUID de la migración: así sigue funcionando aunque a la
     // empresa inicial se la renombre o se la vuelva a crear.
     const company = await this.companiesRepository.findOne({
-      where: {},
+      where: { isPlatform: false },
       order: { createdAt: 'ASC' },
     });
 
@@ -44,6 +41,14 @@ export class UsersSeeder implements OnApplicationBootstrap {
       return;
     }
 
+    // El conteo excluye a la empresa plataforma: el superadmin no es un usuario
+    // de cliente, y contarlo dejaría a una base recién migrada sin ningún
+    // administrador de empresa según qué seeder arranque primero.
+    const count = await this.usersRepository.count({
+      where: { companyId: company.id },
+    });
+    if (count > 0) return;
+
     const email = this.configService.get<string>('SEED_ADMIN_EMAIL') ?? 'admin@fleetlog.com';
     const password = this.configService.get<string>('SEED_ADMIN_PASSWORD') ?? 'Admin1234';
     const name = this.configService.get<string>('SEED_ADMIN_NAME') ?? 'Administrador';
@@ -54,6 +59,9 @@ export class UsersSeeder implements OnApplicationBootstrap {
       password: await bcryptjs.hash(password, 10),
       role: Role.ADMIN,
       companyId: company.id,
+      // Nace verificado: no hay a quién mandarle el mail de confirmación de una
+      // cuenta que crea el propio sistema.
+      emailVerifiedAt: new Date(),
     });
 
     this.logger.warn(

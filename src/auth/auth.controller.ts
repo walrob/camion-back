@@ -7,6 +7,7 @@ import {
   Post,
   Request,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { ActiveUser } from '../common/decorators/active-user.decorator';
 import { ActiveUserInterface } from '../common/interfaces/active-user.interface';
 import { AuthService } from './auth.service';
@@ -72,5 +73,30 @@ export class AuthController {
   @Post('reset-password')
   resetPassword(@Body() body: { token: string; newPassword: string }) {
     return this.authService.resetPassword(body.token, body.newPassword);
+  }
+
+  /**
+   * Confirma la casilla desde el link del mail. **Sin autenticación**: quien lo
+   * usa todavía no puede entrar, que es justamente lo que viene a destrabar.
+   */
+  @HttpCode(HttpStatus.OK)
+  @Post('verify-email')
+  @Throttle({ default: { limit: 20, ttl: 600_000 } })
+  verifyEmail(@Body('token') token: string) {
+    return this.authService.verificarEmail(token);
+  }
+
+  /**
+   * Reenvía el mail de confirmación.
+   *
+   * Limitado por IP con el mismo criterio que el alta: es un endpoint público
+   * que dispara correos, o sea una herramienta gratuita para inundarle la
+   * casilla a un tercero.
+   */
+  @HttpCode(HttpStatus.OK)
+  @Post('resend-verification')
+  @Throttle({ default: { limit: 5, ttl: 600_000 } })
+  resendVerification(@Body('email') email: string) {
+    return this.authService.enviarVerificacion(email);
   }
 }

@@ -1,4 +1,5 @@
 import { INestApplication } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import * as request from 'supertest';
 import { DataSource } from 'typeorm';
 import {
@@ -40,7 +41,23 @@ describe('Onboarding: alta, invitaciones y estado de cuenta', () => {
   const registrar = (datos: Record<string, unknown>) =>
     api('post', '/api/v1/companies/register').send(datos);
 
+  /**
+   * Marca la casilla como confirmada, sin pasar por el mail.
+   *
+   * Es lo que hace el usuario al tocar el link, y no se puede reproducir de
+   * otra forma en un test: el token viaja por correo. El flujo real —rechazo,
+   * confirmación, acceso— se prueba aparte, en «Confirmación de la casilla».
+   */
+  const confirmarCasilla = (email: string) =>
+    ds.query('UPDATE `user` SET `emailVerifiedAt` = NOW() WHERE `email` = ?', [
+      email,
+    ]);
+
   const login = async (email: string) => {
+    // El alta pública deja la cuenta sin confirmar y el login la rechaza. Los
+    // tests que siguen son sobre otra cosa, así que se da el paso por hecho.
+    await confirmarCasilla(email);
+
     const res = await api('post', '/api/v1/auth/login').send({
       email,
       password: PASSWORD,
@@ -49,7 +66,7 @@ describe('Onboarding: alta, invitaciones y estado de cuenta', () => {
   };
 
   describe('Alta pública', () => {
-    it('crea la empresa, arranca el trial y deja entrar de una', async () => {
+    it('crea la empresa, arranca el trial y deja entrar una vez confirmada', async () => {
       const s = sufijo();
       const email = `admin-${s}@e2e.test`;
 
@@ -79,6 +96,19 @@ describe('Onboarding: alta, invitaciones y estado de cuenta', () => {
       expect(sesion.body.plan.code).toBe('operacion');
       expect(sesion.body.company.status).toBe('trial');
       expect(sesion.body.company.onboardingStep).toBe(1);
+    });
+
+    it('el alta responde que queda pendiente de confirmación', async () => {
+      const s = sufijo();
+      const alta = await registrar({
+        companyName: `Pendiente ${s}`,
+        adminName: 'Titular',
+        adminEmail: `pendiente-${s}@e2e.test`,
+        adminPassword: PASSWORD,
+      });
+
+      expect(alta.status).toBe(201);
+      expect(alta.body.verificacionPendiente).toBe(true);
     });
 
     it('la empresa nueva no ve datos de ninguna otra', async () => {
@@ -177,6 +207,122 @@ describe('Onboarding: alta, invitaciones y estado de cuenta', () => {
     });
   });
 
+  /**
+   * Confirmación de la casilla (riesgo R6.1).
+   *
+   * El throttle encarece el alta masiva; sólo la confirmación la vuelve inútil,
+   * porque una dirección inventada nunca llega a un tenant usable. Estos tests
+   * fijan las dos mitades: que sin confirmar no se entra, y que confirmar
+   * alcanza para entrar.
+   */
+  describe('Confirmación de la casilla', () => {
+    let email: string;
+    let userId: string;
+
+    beforeAll(async () => {
+      const s = sufijo();
+      email = `sin-confirmar-${s}@e2e.test`;
+
+      await registrar({
+        companyName: `Sin confirmar ${s}`,
+        adminName: 'Titular',
+        adminEmail: email,
+        adminPassword: PASSWORD,
+      });
+
+      const [fila] = await ds.query(
+        'SELECT `id` FROM `user` WHERE `email` = ?',
+        [email],
+      );
+      userId = fila.id;
+    });
+
+    const tokenDeVerificacion = (payload: Record<string, unknown>) =>
+      app.get(JwtService).sign(payload, { expiresIn: '24h' });
+
+    it('el alta deja la casilla sin confirmar', async () => {
+      const [fila] = await ds.query(
+        'SELECT `emailVerifiedAt` FROM `user` WHERE `email` = ?',
+        [email],
+      );
+      expect(fila.emailVerifiedAt).toBeNull();
+    });
+
+    it('sin confirmar, el login se rechaza aunque la contraseña sea correcta', async () => {
+      const res = await api('post', '/api/v1/auth/login').send({
+        email,
+        password: PASSWORD,
+      });
+
+      expect(res.status).toBe(401);
+      expect(res.body.message).toContain('confirmar tu correo');
+    });
+
+    it('un token de sesión NO sirve como token de confirmación', async () => {
+      // Sin el `proposito` del payload, cualquier JWT de sesión —que lleva
+      // `sub` y lo firma la misma clave— confirmaría la casilla de su dueño.
+      const tokenDeSesion = tokenDeVerificacion({ id: userId, sub: userId });
+
+      const res = await api('post', '/api/v1/auth/verify-email').send({
+        token: tokenDeSesion,
+      });
+
+      expect(res.status).toBe(400);
+
+      const [fila] = await ds.query(
+        'SELECT `emailVerifiedAt` FROM `user` WHERE `email` = ?',
+        [email],
+      );
+      expect(fila.emailVerifiedAt).toBeNull();
+    });
+
+    it('un token inventado no confirma nada', async () => {
+      const res = await api('post', '/api/v1/auth/verify-email').send({
+        token: 'no-es-un-jwt',
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('con el token correcto se confirma y recién ahí se puede entrar', async () => {
+      const res = await api('post', '/api/v1/auth/verify-email').send({
+        token: tokenDeVerificacion({ sub: userId, proposito: 'verify-email' }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.body.email).toBe(email);
+
+      const login = await api('post', '/api/v1/auth/login').send({
+        email,
+        password: PASSWORD,
+      });
+      expect(login.status).toBe(200);
+      expect(login.body.token).toBeTruthy();
+    });
+
+    it('reusar el link no rompe: el cliente de correo ya lo visitó una vez', async () => {
+      const res = await api('post', '/api/v1/auth/verify-email').send({
+        token: tokenDeVerificacion({ sub: userId, proposito: 'verify-email' }),
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it('el reenvío no revela si la dirección existe', async () => {
+      const existente = await api(
+        'post',
+        '/api/v1/auth/resend-verification',
+      ).send({ email });
+
+      const inventada = await api(
+        'post',
+        '/api/v1/auth/resend-verification',
+      ).send({ email: `nadie-${sufijo()}@e2e.test` });
+
+      expect(existente.status).toBe(200);
+      expect(inventada.status).toBe(200);
+      expect(inventada.body.message).toBe(existente.body.message);
+    });
+  });
+
   describe('Invitaciones', () => {
     let token: string;
     let s: string;
@@ -224,6 +370,59 @@ describe('Onboarding: alta, invitaciones y estado de cuenta', () => {
       );
       expect(payload.companyId).toBe(empresa.id);
       expect(payload.role).toBe('driver');
+    });
+
+    it('el alta informa si el mail salió, y devuelve el link igual', async () => {
+      const inv = await api('post', '/api/v1/invites')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ email: `aviso-${s}@e2e.test`, role: 'driver' });
+
+      expect(inv.status).toBe(201);
+      // El token viaja siempre: es la salida cuando el correo no llega, y sin
+      // él la pantalla no podría ofrecer el link para compartir a mano.
+      expect(inv.body.token).toBeTruthy();
+      expect(typeof inv.body.emailEnviado).toBe('boolean');
+    });
+
+    it('quien acepta por el link no tiene que confirmar la casilla', async () => {
+      // Llegar hasta acá exige el token, que sólo se conoce por el mail: la
+      // dirección ya quedó probada y pedir otra confirmación sería un paso de
+      // más que además dejaría al invitado sin poder entrar.
+      const email = `verificado-${s}@e2e.test`;
+
+      const inv = await api('post', '/api/v1/invites')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ email, role: 'driver' });
+
+      await api('post', `/api/v1/invites/token/${inv.body.token}/accept`).send({
+        password: PASSWORD,
+      });
+
+      const [fila] = await ds.query(
+        'SELECT `emailVerifiedAt` FROM `user` WHERE `email` = ?',
+        [email],
+      );
+      expect(fila.emailVerifiedAt).not.toBeNull();
+
+      const acceso = await api('post', '/api/v1/auth/login').send({
+        email,
+        password: PASSWORD,
+      });
+      expect(acceso.status).toBe(200);
+    });
+
+    it('las pendientes traen el token, para poder compartir el link', async () => {
+      const res = await api('get', '/api/v1/invites').set(
+        'Authorization',
+        `Bearer ${token}`,
+      );
+
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body)).toBe(true);
+      for (const i of res.body) {
+        expect(i.token).toBeTruthy();
+        expect(i.acceptedAt).toBeNull();
+      }
     });
 
     it('un token ya usado da un mensaje específico, no un error genérico', async () => {

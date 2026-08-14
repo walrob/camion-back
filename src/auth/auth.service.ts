@@ -5,6 +5,7 @@ import {
   forwardRef,
   Inject,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -21,9 +22,34 @@ import { LoginDto } from './dto/login.dto';
 import { CreateOperatorDto } from './dto/create-operator.dto';
 import { DEMO_READONLY_MESSAGE } from './guard/demo-readonly.guard';
 import { LimitsService } from 'src/plans/limits.service';
+import { EmailService } from 'src/notifications/email/email.service';
+
+/**
+ * Motivo de rechazo del login cuando falta confirmar la casilla.
+ *
+ * Es una constante porque el front la compara para decidir si ofrece el botón
+ * de reenvío: un `includes` sobre un texto suelto se rompe en silencio la
+ * primera vez que alguien corrige una coma.
+ */
+export const EMAIL_SIN_VERIFICAR =
+  'Falta confirmar tu correo. Revisá tu casilla —también el correo no deseado— ' +
+  'o pedí que te reenviemos el mensaje.';
+
+/** Cuántas horas vale el link de confirmación. */
+const HORAS_DE_VERIFICACION = 24;
+
+/**
+ * Marca del token de confirmación.
+ *
+ * Sin ella, un token de sesión cualquiera pasaría por token de verificación:
+ * los firma la misma clave y ambos llevan `sub`.
+ */
+const PROPOSITO_VERIFICACION = 'verify-email';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
@@ -31,7 +57,86 @@ export class AuthService {
     private readonly companiesRepository: Repository<Company>,
     private readonly planContext: PlanContextService,
     private readonly limitsService: LimitsService,
+    private readonly email: EmailService,
   ) {}
+
+  // ── Confirmación de la casilla ───────────────────────────────────────────
+
+  /**
+   * Manda (o vuelve a mandar) el mail de confirmación.
+   *
+   * **Responde igual exista o no la cuenta, y esté o no verificada.** Un
+   * endpoint público que distingue los casos es un padrón de direcciones
+   * registradas servido gratis a cualquiera.
+   */
+  async enviarVerificacion(email: string): Promise<{ message: string }> {
+    const respuesta = {
+      message:
+        'Si la dirección corresponde a una cuenta sin confirmar, te enviamos ' +
+        'el mensaje.',
+    };
+
+    const user = await this.usersService.findOneByEmail(email);
+    if (!user || user.emailVerifiedAt) return respuesta;
+
+    const token = this.jwtService.sign(
+      { sub: user.id, proposito: PROPOSITO_VERIFICACION },
+      { expiresIn: `${HORAS_DE_VERIFICACION}h` },
+    );
+
+    try {
+      await this.email.sendVerificacionEmail(user.email, {
+        token,
+        nombre: user.name,
+        horas: HORAS_DE_VERIFICACION,
+      });
+    } catch (e) {
+      // El alta ya está hecha: tumbarla porque el SMTP falló obligaría a
+      // repetirla y el email quedaría ocupado por la cuenta a medio crear.
+      this.logger.error(
+        `No se pudo enviar la verificación a ${user.email}: ${String(e)}`,
+      );
+    }
+
+    return respuesta;
+  }
+
+  /**
+   * Confirma la casilla a partir del token del mail.
+   *
+   * El `proposito` del payload no es decorativo: sin él, **el token de sesión
+   * de cualquier usuario serviría como token de verificación**, porque los dos
+   * los firma la misma clave y los dos llevan un `sub`.
+   */
+  async verificarEmail(token: string): Promise<{ email: string }> {
+    let payload: { sub?: string; proposito?: string };
+
+    try {
+      payload = this.jwtService.verify(token);
+    } catch {
+      throw new BadRequestException(
+        'El enlace venció o no es válido. Pedí que te lo reenviemos.',
+      );
+    }
+
+    if (payload.proposito !== PROPOSITO_VERIFICACION || !payload.sub) {
+      throw new BadRequestException('El enlace no es válido.');
+    }
+
+    const user = await this.usersService.findOneById(payload.sub);
+    if (!user) throw new BadRequestException('El enlace no es válido.');
+
+    // Reusar el link no puede ser un error: el cliente de correo que
+    // pre-visita los enlaces ya lo consumió una vez antes de que la persona
+    // llegue a tocarlo.
+    if (!user.emailVerifiedAt) {
+      await this.usersService.update(user.id, {
+        emailVerifiedAt: new Date(),
+      } as never);
+    }
+
+    return { email: user.email };
+  }
 
   /**
    * Empresa, plan, features y límites vigentes del usuario.
@@ -83,6 +188,13 @@ export class AuthService {
 
     const isPasswordValid = await bcryptjs.compare(password, user.password);
     if (!isPasswordValid) throw new UnauthorizedException('Contraseña inválida.');
+
+    // La casilla sin confirmar frena el acceso (riesgo R6.1). Se verifica
+    // DESPUÉS de la contraseña a propósito: hacerlo antes le contaría a
+    // cualquiera qué direcciones tienen cuenta sin verificar.
+    if (!user.emailVerifiedAt) {
+      throw new UnauthorizedException(EMAIL_SIN_VERIFICAR);
+    }
 
     await this.usersService.update(user.id, { lastConnection: new Date() } as any);
 
@@ -186,7 +298,9 @@ export class AuthService {
       email: createOperatorDto.email,
       name: createOperatorDto.name,
       password: await bcryptjs.hash(createOperatorDto.password, 10),
-      isEmailVerified: true,
+      // Lo crea un administrador y le fija la contraseña: no hay casilla que
+      // confirmar, la cuenta ya nace bajo la responsabilidad de la empresa.
+      emailVerifiedAt: new Date(),
       role: rol,
     });
 

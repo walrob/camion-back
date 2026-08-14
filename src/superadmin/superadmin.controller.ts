@@ -18,6 +18,7 @@ import { Plan } from 'src/plans/entities/plan.entity';
 import { AUDIT, AuditLogService } from 'src/audit-log/audit-log.service';
 import { SuperadminService } from './superadmin.service';
 import { ImpersonationService } from './impersonation.service';
+import { WebhooksService } from 'src/webhooks/webhooks.service';
 
 /**
  * Panel de operación de la plataforma.
@@ -38,6 +39,7 @@ export class SuperadminController {
     private readonly superadmin: SuperadminService,
     private readonly impersonation: ImpersonationService,
     private readonly auditLog: AuditLogService,
+    private readonly webhooks: WebhooksService,
   ) {}
 
   // ── Tablero y consultas ──────────────────────────────────────────────────
@@ -49,9 +51,21 @@ export class SuperadminController {
   }
 
   @Get('companies')
-  @ApiOperation({ summary: 'Empresas con sus métricas de uso.' })
-  empresas(@Query('estado') estado?: string, @Query('plan') plan?: string) {
-    return this.superadmin.listarEmpresas({ estado, plan });
+  @ApiOperation({ summary: 'Empresas con sus métricas de uso, paginadas.' })
+  empresas(
+    @Query('estado') estado?: string,
+    @Query('plan') plan?: string,
+    @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.superadmin.listarEmpresas({
+      estado,
+      plan,
+      search,
+      page: Number(page),
+      limit: Number(limit),
+    });
   }
 
   @Get('companies/:id')
@@ -81,8 +95,98 @@ export class SuperadminController {
 
   @Get('billing')
   @ApiOperation({ summary: 'Períodos impagos de todas las empresas.' })
-  cobranzas() {
-    return this.superadmin.cobranzas();
+  cobranzas(@Query('page') page?: string, @Query('limit') limit?: string) {
+    return this.superadmin.cobranzas({
+      page: Number(page),
+      limit: Number(limit),
+    });
+  }
+
+  @Get('payments')
+  @ApiOperation({
+    summary:
+      'Pagos de todas las empresas, por Mercado Pago o conciliados a mano.',
+  })
+  pagos(
+    @Query('companyId') companyId?: string,
+    @Query('estado') estado?: string,
+    @Query('metodo') metodo?: string,
+    @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.superadmin.pagos({
+      companyId,
+      estado,
+      metodo,
+      search,
+      page: Number(page),
+      limit: Number(limit),
+    });
+  }
+
+  @Get('mp-events')
+  @ApiOperation({
+    summary:
+      'Avisos recibidos de Mercado Pago. `soloErrores=1` deja los que ' +
+      'quedaron sin procesar.',
+  })
+  avisosDeMp(
+    @Query('soloErrores') soloErrores?: string,
+    @Query('type') type?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.superadmin.avisosDeMp({
+      soloErrores: soloErrores === '1' || soloErrores === 'true',
+      type,
+      page: Number(page),
+      limit: Number(limit),
+    });
+  }
+
+  /**
+   * Vuelve a procesar un aviso que falló.
+   *
+   * Reusa el mismo camino que el reenvío de Mercado Pago —candado incluido—
+   * en lugar de escribir el pago a mano: la doble acreditación la sigue
+   * impidiendo el índice único de `payments.mpPaymentId`, que es la única
+   * garantía que no se puede correr (R9.2).
+   */
+  @Post('mp-events/:id/retry')
+  @ApiOperation({ summary: 'Reprocesa un aviso de Mercado Pago fallido.' })
+  async reprocesarAviso(
+    @Param('id') id: string,
+    @ActiveUser() user: ActiveUserInterface,
+    @Req() req: Request,
+  ) {
+    const evento = await this.superadmin.avisoDeMp(id);
+
+    let resultado: unknown;
+    let error: string | null = null;
+
+    try {
+      resultado = await this.webhooks.procesar(evento.type, evento.resourceId);
+    } catch (e) {
+      // El fallo ya quedó escrito en la fila por `WebhooksService`. Acá se
+      // devuelve el motivo en vez de un 500 pelado: quien aprieta el botón
+      // necesita leer qué pasó, no adivinarlo del log.
+      error = String(e).slice(0, 500);
+    }
+
+    await this.auditLog.registrar(
+      user,
+      {
+        action: AUDIT.MP_EVENT_RETRIED,
+        companyId: evento.companyId,
+        entityType: 'mp_webhook_event',
+        entityId: evento.id,
+        metadata: { type: evento.type, resourceId: evento.resourceId, error },
+      },
+      req as never,
+    );
+
+    return { id: evento.id, resultado, error };
   }
 
   // ── Acciones sobre una empresa ───────────────────────────────────────────

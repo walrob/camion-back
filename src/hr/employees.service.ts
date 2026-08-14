@@ -105,7 +105,9 @@ export class EmployeesService {
       email,
       name: `${dto.firstName} ${dto.lastName}`,
       password: await bcryptjs.hash(password, 10),
-      isEmailVerified: true,
+      // El alta la hace RRHH con una contraseña que le entrega en mano: no hay
+      // casilla que confirmar para que el empleado pueda entrar.
+      emailVerifiedAt: new Date(),
       role: derivedRole,
       phone: dto.phone,
     });

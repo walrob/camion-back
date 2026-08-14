@@ -6,6 +6,7 @@ import { CompaniesController } from './companies.controller';
 import { AccountStatusGuard } from 'src/auth/guard/account-status.guard';
 import { CompanyStatusCron } from './company-status.cron';
 import { AuthModule } from 'src/auth/auth.module';
+import { StorageModule } from 'src/common/storage/storage.module';
 
 /**
  * Empresas (tenants) de la plataforma: alta pública, onboarding y datos propios.
@@ -23,7 +24,12 @@ import { AuthModule } from 'src/auth/auth.module';
 @Module({
     // Ciclo deliberado: este módulo usa los guards de Auth y Auth usa este
   // servicio para armar la sesión. forwardRef en los dos lados.
-  imports: [TypeOrmModule.forFeature([Company]), forwardRef(() => AuthModule)],
+  imports: [
+    TypeOrmModule.forFeature([Company]),
+    forwardRef(() => AuthModule),
+    // Carga del logo de la empresa (onboarding y configuración).
+    StorageModule,
+  ],
   controllers: [CompaniesController],
   providers: [CompaniesService, AccountStatusGuard, CompanyStatusCron],
   exports: [CompaniesService, AccountStatusGuard, CompanyStatusCron, TypeOrmModule],

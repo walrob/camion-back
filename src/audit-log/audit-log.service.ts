@@ -5,6 +5,11 @@ import { AuditLog } from './entities/audit-log.entity';
 import { Role } from 'src/common/enums/role.enum';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
 import { runAsSystem } from 'src/common/tenant/tenant-context';
+import { Pagination } from 'nestjs-typeorm-paginate';
+import {
+  leerPaginacion,
+  metaDePaginacion,
+} from 'src/common/utils/meta-paginacion.util';
 
 /** Acciones registradas. Se nombran `dominio.hecho`, en pasado. */
 export const AUDIT = {
@@ -21,6 +26,8 @@ export const AUDIT = {
   /** Cobro automático por Mercado Pago. */
   MP_PAYMENT_RECEIVED: 'mp.payment_received',
   MP_SUBSCRIPTION_CHANGED: 'mp.subscription_changed',
+  /** Reproceso manual de un aviso que había fallado. */
+  MP_EVENT_RETRIED: 'mp.event_retried',
   PLAN_UPDATED: 'plan.updated',
   IMPERSONATION_STARTED: 'superadmin.impersonation_started',
   SUPERADMIN_VIEWED_COMPANY: 'superadmin.viewed_company',
@@ -98,15 +105,20 @@ export class AuditLogService {
    */
   async listar(
     actor: ActiveUserInterface,
-    filtros: { companyId?: string; action?: string; limit?: number } = {},
-  ): Promise<AuditLog[]> {
+    filtros: {
+      companyId?: string;
+      action?: string;
+      search?: string;
+      desde?: string;
+      hasta?: string;
+      page?: number;
+      limit?: number;
+    } = {},
+  ): Promise<Pagination<AuditLog>> {
     const esSuperadmin = actor.role === Role.SUPERADMIN;
-    const limit = Math.min(filtros.limit ?? 100, 500);
+    const { page, limit, offset } = leerPaginacion(filtros.page, filtros.limit, 50);
 
-    const qb = this.repo
-      .createQueryBuilder('log')
-      .orderBy('log.createdAt', 'DESC')
-      .limit(limit);
+    const qb = this.repo.createQueryBuilder('log').orderBy('log.createdAt', 'DESC');
 
     if (esSuperadmin) {
       if (filtros.companyId) {
@@ -126,6 +138,53 @@ export class AuditLogService {
       qb.andWhere('log.action = :action', { action: filtros.action });
     }
 
-    return runAsSystem(() => qb.getMany());
+    if (filtros.search) {
+      qb.andWhere(
+        '(LOWER(log.actorEmail) LIKE LOWER(:q) OR log.entityId LIKE :q ' +
+          'OR LOWER(log.entityType) LIKE LOWER(:q))',
+        { q: `%${filtros.search}%` },
+      );
+    }
+
+    if (filtros.desde) {
+      qb.andWhere('log.createdAt >= :desde', { desde: filtros.desde });
+    }
+    if (filtros.hasta) {
+      // Inclusivo: quien pide "hasta el 14" espera que entre lo del 14.
+      qb.andWhere('log.createdAt < DATE_ADD(:hasta, INTERVAL 1 DAY)', {
+        hasta: filtros.hasta,
+      });
+    }
+
+    return runAsSystem(async () => {
+      const total = await qb.getCount();
+      const items = await qb.limit(limit).offset(offset).getMany();
+
+      return {
+        items,
+        meta: metaDePaginacion(total, items.length, page, limit),
+      } as Pagination<AuditLog>;
+    });
+  }
+
+  /**
+   * Acciones distintas que hay registradas, para poblar el filtro.
+   *
+   * Sale de la base y no de la constante `AUDIT` a propósito: lo que interesa
+   * filtrar es lo que efectivamente pasó, y una acción vieja que ya no se
+   * emite igual está en el histórico.
+   */
+  async accionesRegistradas(actor: ActiveUserInterface): Promise<string[]> {
+    const qb = this.repo
+      .createQueryBuilder('log')
+      .select('DISTINCT log.action', 'action')
+      .orderBy('log.action', 'ASC');
+
+    if (actor.role !== Role.SUPERADMIN) {
+      qb.where('log.companyId = :companyId', { companyId: actor.companyId });
+    }
+
+    const filas = await runAsSystem(() => qb.getRawMany<{ action: string }>());
+    return filas.map((f) => f.action);
   }
 }

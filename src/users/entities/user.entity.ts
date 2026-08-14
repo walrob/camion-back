@@ -88,4 +88,18 @@ export class User extends TenantEntity {
 
   @Column({ type: 'timestamp', nullable: true })
   lastConnection: Date;
+
+  /**
+   * Cuándo confirmó su dirección de correo. NULL = todavía no.
+   *
+   * Es la mitigación real de R6.1: el throttle encarece el alta masiva, pero
+   * sólo la verificación la vuelve inútil, porque una casilla inventada nunca
+   * llega a un tenant usable. Mientras esté en NULL el login se rechaza.
+   *
+   * Nace con fecha —no en NULL— en las cuentas donde el email ya está probado
+   * por el propio flujo: quien acepta una invitación recibida por mail, y los
+   * usuarios que crea el sistema (seeders).
+   */
+  @Column({ type: 'timestamp', nullable: true })
+  emailVerifiedAt: Date | null;
 }
