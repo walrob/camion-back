@@ -50,6 +50,11 @@ function prepararEnv(): void {
   // Cada alta de empresa y cada invitación disparan un correo. Sin esto la
   // suite abre una conexión SMTP por caso.
   process.env.EMAIL_ENABLED = 'false';
+  // Las suites corren seguidas contra la misma instancia y desde la misma IP:
+  // con el límite activo se agotarían solas —el login admite 20 intentos cada
+  // 10 minutos— y fallarían por algo que no es lo que están probando.
+  // El caso que sí verifica que el límite funciona lo enciende a propósito.
+  process.env.THROTTLE_ENABLED = 'false';
 }
 
 async function recrearBase(): Promise<void> {

@@ -9,6 +9,29 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api/v1');
 
+  // Cuántos proxies hay delante de la aplicación.
+  //
+  // Importa desde que el rate limit está activo: en producción la app escucha en
+  // texto plano y es nginx quien termina TLS, así que sin esto `req.ip` es
+  // siempre la IP del proxy y **todo el tráfico anónimo comparte un solo
+  // contador**. El límite del login son 20 intentos cada 10 minutos: sumados
+  // entre todos los clientes, se agota en minutos y deja a todo el mundo afuera.
+  //
+  // El default en producción es 1 (nginx en la misma máquina). Si mañana se
+  // suma un balanceador o un CDN, hay que subirlo a 2: contar de menos hace que
+  // se lea la IP del salto equivocado.
+  //
+  // El riesgo del otro lado es conocido y menor: confiar en `X-Forwarded-For`
+  // permite que alguien falsee su IP y se saltee su propio límite. Es preferible
+  // a bloquear a los usuarios legítimos, que es lo que pasa si se cuenta de
+  // menos.
+  const saltosDeProxy = Number(
+    process.env.TRUST_PROXY ?? (process.env.NODE_ENV === 'production' ? 1 : 0),
+  );
+  if (saltosDeProxy > 0) {
+    app.set('trust proxy', saltosDeProxy);
+  }
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

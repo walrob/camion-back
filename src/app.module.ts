@@ -1,8 +1,10 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { AppThrottlerGuard } from './common/throttler/app-throttler.guard';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
@@ -46,9 +48,12 @@ import { TenantContextMiddleware } from './common/tenant/tenant-context.middlewa
 
     ScheduleModule.forRoot(),
 
-    // Límite por IP. El default es holgado para no molestar al uso normal; los
-    // endpoints públicos que crean cuentas lo ajustan con @Throttle (R6.1).
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
+    // El default es holgado para no molestar al uso normal; los endpoints
+    // públicos que crean cuentas lo ajustan con @Throttle (R6.1). Qué se cuenta
+    // —sesión o IP— lo decide `AppThrottlerGuard`, que además es lo que hace que
+    // esta configuración tenga efecto: sin el APP_GUARD de más abajo, el módulo
+    // no intercepta ningún request.
+    ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 120 }]),
 
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
@@ -132,7 +137,13 @@ import { TenantContextMiddleware } from './common/tenant/tenant-context.middlewa
     SuperadminModule,
   ],
   controllers: [],
-  providers: [],
+  providers: [
+    // Global y no por controlador: un límite que hay que acordarse de poner en
+    // cada ruta nueva es un límite que tarde o temprano falta justo donde
+    // importa. Los endpoints que necesitan un techo distinto lo declaran con
+    // @Throttle, que ahora sí surte efecto.
+    { provide: APP_GUARD, useClass: AppThrottlerGuard },
+  ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
