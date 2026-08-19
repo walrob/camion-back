@@ -16,6 +16,7 @@ import { CreatePlanDto } from './dto/create-plan.dto';
 import { UpdatePlanDto } from './dto/update-plan.dto';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
+import { ReopenDto } from 'src/common/dto/reopen.dto';
 import { Auth } from 'src/auth/decorators/auth.decorator';
 import { Role } from 'src/common/enums/role.enum';
 import { Feature } from 'src/common/enums/feature.enum';
@@ -106,5 +107,16 @@ export class MaintenanceController {
     @ActiveUser() user: ActiveUserInterface,
   ) {
     return this.maintenanceService.updateOrder(id, dto, user);
+  }
+
+  /** Reabre una orden finalizada: el arreglo no quedó o se cargó mal. */
+  @Patch('orders/:id/reopen')
+  @Auth(Role.ADMIN, Role.MAINTENANCE)
+  reopenOrder(
+    @Param('id') id: string,
+    @Body() dto: ReopenDto,
+    @ActiveUser() user: ActiveUserInterface,
+  ) {
+    return this.maintenanceService.reopenOrder(id, dto.reason, user);
   }
 }

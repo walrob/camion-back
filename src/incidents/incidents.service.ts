@@ -21,6 +21,12 @@ import { IncidentsGateway } from './incidents.gateway';
 import { AlertsService } from 'src/alerts/alerts.service';
 import { SequencesService } from 'src/common/sequences/sequences.service';
 import { SequenceKey } from 'src/common/entities/company-sequence.entity';
+import { AUDIT, AuditLogService } from 'src/audit-log/audit-log.service';
+import {
+  assertNoCerrado,
+  assertPuedeReabrir,
+  exigirMotivo,
+} from 'src/common/utils/registro-cerrado.util';
 
 @Injectable()
 export class IncidentsService {
@@ -33,6 +39,7 @@ export class IncidentsService {
     private readonly gateway: IncidentsGateway,
     private readonly alertsService: AlertsService,
     private readonly sequences: SequencesService,
+    private readonly auditLog: AuditLogService,
   ) {}
 
   async create(
@@ -169,6 +176,7 @@ export class IncidentsService {
     user: ActiveUserInterface,
   ): Promise<Incident> {
     const incident = await this.findOne(id);
+    this.assertNoResuelto(incident, 'reasignarlo');
     incident.assignedToUserId = dto.assignedToUserId;
     if (incident.status === IncidentStatus.PENDING) {
       incident.status = IncidentStatus.IN_PROGRESS;
@@ -185,6 +193,37 @@ export class IncidentsService {
     user: ActiveUserInterface,
   ): Promise<Incident> {
     const incident = await this.findOne(id);
+    const estabaResuelto = incident.status === IncidentStatus.RESOLVED;
+    const reabre = estabaResuelto && dto.status !== IncidentStatus.RESOLVED;
+
+    // Volver a "resolver" lo ya resuelto sólo pisaría la fecha de resolución
+    // con una posterior: se pierde cuándo se resolvió de verdad.
+    assertNoCerrado(
+      estabaResuelto && dto.status === IncidentStatus.RESOLVED,
+      'El incidente ya está resuelto.',
+    );
+
+    if (reabre) {
+      assertPuedeReabrir(user);
+      const motivo = exigirMotivo(dto.note, 'el incidente');
+      incident.resolvedAt = null;
+      incident.status = dto.status;
+      incident.updatedBy = user.id;
+      await this.incidentsRepository.save(incident);
+      // Doble registro a propósito: el evento es lo que ve el despacho en la
+      // ficha del incidente; la auditoría es lo que ve el auditor, y sobrevive
+      // aunque el incidente se borre.
+      await this.addEvent(id, user.id, 'reopened', motivo);
+      await this.auditLog.registrar(user, {
+        action: AUDIT.INCIDENT_REOPENED,
+        companyId: user.companyId,
+        entityType: 'incident',
+        entityId: id,
+        metadata: { code: incident.code, estadoNuevo: dto.status, motivo },
+      });
+      return this.emitAndReturn(id);
+    }
+
     incident.status = dto.status;
     if (dto.status === IncidentStatus.RESOLVED) incident.resolvedAt = new Date();
     incident.updatedBy = user.id;
@@ -199,6 +238,7 @@ export class IncidentsService {
     user: ActiveUserInterface,
   ): Promise<Incident> {
     const incident = await this.findOne(id);
+    this.assertNoResuelto(incident, 'cambiarle la gravedad');
     const previous = incident.severity;
     incident.severity = dto.severity;
     incident.updatedBy = user.id;
@@ -220,6 +260,21 @@ export class IncidentsService {
     await this.findOne(id);
     await this.addEvent(id, user.id, 'comment', dto.note);
     return this.emitAndReturn(id);
+  }
+
+  /**
+   * Un incidente resuelto no se retoca por los costados.
+   *
+   * Reasignarlo o cambiarle la gravedad después de cerrado deja un registro que
+   * no se corresponde con cómo se trabajó: la gravedad con la que se atendió el
+   * hecho es la que tenía mientras estaba abierto. Si hace falta cambiar algo,
+   * primero se reabre —con motivo, y eso queda auditado— y recién ahí se toca.
+   */
+  private assertNoResuelto(incident: Incident, queSeIntenta: string) {
+    assertNoCerrado(
+      incident.status === IncidentStatus.RESOLVED,
+      `El incidente está resuelto: para ${queSeIntenta} hay que reabrirlo primero.`,
+    );
   }
 
   private async emitAndReturn(id: string): Promise<Incident> {

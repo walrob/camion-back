@@ -74,14 +74,6 @@ export class Plan {
   @Column('decimal', { precision: 12, scale: 2, default: 0 })
   pricePerVehicle: number;
 
-  /**
-   * Mínimo de vehículos facturables del plan (3 / 5 / 8 / 25).
-   * Se cuenta SOLO sobre camiones activos: un acoplado factura al 50% pero no
-   * ayuda a alcanzar el mínimo (decisión D3 del plan de conversión a SaaS).
-   */
-  @Column('int', { default: 0 })
-  minVehicles: number;
-
   /** Implementación / onboarding, de pago único. */
   @Column('decimal', { precision: 12, scale: 2, default: 0 })
   setupFee: number;

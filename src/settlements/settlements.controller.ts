@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   DefaultValuePipe,
   Get,
@@ -10,6 +11,7 @@ import {
 import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { SettlementsService } from './settlements.service';
 import { SettlementStatus } from 'src/common/enums/settlementStatus.enum';
+import { ReopenDto } from 'src/common/dto/reopen.dto';
 import { Auth } from 'src/auth/decorators/auth.decorator';
 import { Role } from 'src/common/enums/role.enum';
 import { Feature } from 'src/common/enums/feature.enum';
@@ -90,5 +92,19 @@ export class SettlementsController {
   @Auth(Role.ADMIN, Role.MANAGER, Role.AUDITOR)
   close(@Param('id') id: string, @ActiveUser() user: ActiveUserInterface) {
     return this.settlementsService.close(id, user);
+  }
+
+  /**
+   * Reabre una liquidación cerrada para poder recalcularla. Sin el auditor:
+   * consulta y cierra, pero no revierte cierres.
+   */
+  @Post(':id/reopen')
+  @Auth(Role.ADMIN, Role.MANAGER)
+  reopen(
+    @Param('id') id: string,
+    @Body() dto: ReopenDto,
+    @ActiveUser() user: ActiveUserInterface,
+  ) {
+    return this.settlementsService.reopen(id, dto.reason, user);
   }
 }

@@ -35,7 +35,9 @@ import { SequencesService } from 'src/common/sequences/sequences.service';
 import { SequenceKey } from 'src/common/entities/company-sequence.entity';
 import { Driver } from 'src/drivers/entities/driver.entity';
 import { Trailer } from 'src/fleet/entities/trailer.entity';
+import { Settlement } from 'src/settlements/entities/settlement.entity';
 import { BillingStatus } from 'src/common/enums/billing.enum';
+import { assertNoCerrado } from 'src/common/utils/registro-cerrado.util';
 
 /** Normaliza una fecha a 'YYYY-MM-DD', que es como se guardan las del legajo. */
 const toDateStr = (value: string | Date | undefined): string | undefined => {
@@ -77,6 +79,11 @@ export class TripsService {
     private readonly tripsRepository: Repository<Trip>,
     @InjectRepository(Trailer)
     private readonly trailersRepository: Repository<Trailer>,
+    // Sólo para saber si el viaje ya se rindió. Va por repositorio y no por
+    // `SettlementsService` porque liquidaciones ya depende de viajes: inyectar
+    // el servicio armaría un ciclo entre los dos módulos.
+    @InjectRepository(Settlement)
+    private readonly settlementsRepository: Repository<Settlement>,
     private readonly trucksService: TrucksService,
     private readonly driversService: DriversService,
     private readonly checklistsService: ChecklistsService,
@@ -549,11 +556,38 @@ export class TripsService {
     return this.tripsRepository.save(trip);
   }
 
+  /**
+   * Baja lógica de un viaje.
+   *
+   * Sólo se puede dar de baja lo que todavía no pasó: un viaje asignado que se
+   * cargó por error, o uno cancelado. El que está en curso o terminado **es el
+   * registro de lo que hizo la unidad** —de ahí salen los kilómetros, los
+   * gastos, la liquidación del chofer y lo que se le muestra a un inspector—,
+   * así que se cancela, no se borra.
+   */
   async remove(id: string, user: ActiveUserInterface) {
     const trip = await this.findOne(id);
+    assertNoCerrado(
+      trip.status === TripStatus.IN_PROGRESS ||
+        trip.status === TripStatus.FINISHED,
+      'Un viaje en curso o finalizado no se elimina. Si no se hizo, cancelalo: ' +
+        'el registro tiene que quedar.',
+    );
+    assertNoCerrado(
+      await this.tieneLiquidacion(id),
+      'El viaje tiene una liquidación asociada y no puede eliminarse.',
+    );
     trip.deletedBy = user.id;
     await this.tripsRepository.save(trip);
     return this.tripsRepository.softDelete(id);
+  }
+
+  /** ¿Hay una liquidación viva para este viaje? */
+  private async tieneLiquidacion(tripId: string): Promise<boolean> {
+    const settlement = await this.settlementsRepository.findOne({
+      where: { tripId },
+    });
+    return !!settlement;
   }
 
   /** Verifica que el viaje pertenezca al chofer autenticado. */

@@ -19,10 +19,10 @@ import { runAsSystem } from 'src/common/tenant/tenant-context';
  * Días de prueba gratuita.
  *
  * El trial es del plan **Operación**, no de Control: quien probó rendiciones y
- * el tablero de combustible durante tres semanas no compara Control contra nada,
+ * el tablero de combustible durante un mes no compara Control contra nada,
  * lo compara contra lo que ya tenía (MODELO-COMERCIAL §6.1).
  */
-export const DIAS_DE_TRIAL = 21;
+export const DIAS_DE_TRIAL = 30;
 export const PLAN_DE_TRIAL = 'operacion';
 
 @Injectable()

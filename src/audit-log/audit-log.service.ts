@@ -29,6 +29,15 @@ export const AUDIT = {
   /** Reproceso manual de un aviso que había fallado. */
   MP_EVENT_RETRIED: 'mp.event_retried',
   PLAN_UPDATED: 'plan.updated',
+  /**
+   * Reaperturas: alguien revirtió un cierre. Son las acciones que contestan
+   * "¿por qué esto que estaba cerrado volvió a estar abierto?", así que van
+   * siempre con el motivo en `metadata`.
+   */
+  INCIDENT_REOPENED: 'incident.reopened',
+  ALERT_REOPENED: 'alert.reopened',
+  MAINTENANCE_ORDER_REOPENED: 'maintenance.order_reopened',
+  SETTLEMENT_REOPENED: 'settlement.reopened',
   IMPERSONATION_STARTED: 'superadmin.impersonation_started',
   SUPERADMIN_VIEWED_COMPANY: 'superadmin.viewed_company',
 } as const;

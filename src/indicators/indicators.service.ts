@@ -191,7 +191,7 @@ export class IndicatorsService {
       expenseByDriver: byDriver,
       breakdownsByTruck: breakdowns,
       // Riesgo R4.1: la retención del plan recorta el histórico en silencio. Un
-      // total que en realidad cubre 6 meses y se presenta como "el total" es un
+      // total que en realidad cubre 12 meses y se presenta como "el total" es un
       // número equivocado, no un número acotado. El reporte declara siempre qué
       // ventana cubrió para que el front lo muestre en el encabezado.
       coverage: this.coberturaEfectiva(f),

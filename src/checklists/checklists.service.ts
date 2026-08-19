@@ -16,6 +16,7 @@ import {
 } from 'src/common/enums/checklist.enum';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
 import { DriversService } from 'src/drivers/drivers.service';
+import { assertNoCerrado } from 'src/common/utils/registro-cerrado.util';
 
 @Injectable()
 export class ChecklistsService {
@@ -71,6 +72,7 @@ export class ChecklistsService {
     });
     if (!item) throw new NotFoundException('Ítem de checklist no encontrado.');
     await this.assertDriver(item.checklist.driverId, user);
+    this.assertNoFirmado(item.checklist);
 
     Object.assign(item, dto);
     return this.itemsRepository.save(item);
@@ -83,6 +85,7 @@ export class ChecklistsService {
   ): Promise<Checklist> {
     const checklist = await this.findOne(id);
     await this.assertDriver(checklist.driverId, user);
+    this.assertNoFirmado(checklist);
 
     checklist.signatureKey = dto.signatureKey;
     checklist.signedAt = new Date();
@@ -106,6 +109,24 @@ export class ChecklistsService {
     });
     if (!checklist) throw new NotFoundException('Checklist no encontrado.');
     return checklist;
+  }
+
+  /**
+   * Un checklist firmado no se modifica, ni por el chofer ni por la oficina, y
+   * tampoco se vuelve a firmar.
+   *
+   * Es el registro que respalda que la unidad salió en condiciones: si los
+   * ítems se pueden cambiar después de la firma, la firma no prueba nada y el
+   * papel no sirve ante la CNRT ni ante un siniestro. Por eso acá no hay
+   * reapertura: el error se corrige con un checklist nuevo del viaje, no
+   * editando el viejo.
+   */
+  private assertNoFirmado(checklist: Checklist) {
+    assertNoCerrado(
+      !!checklist.signedAt,
+      'El checklist ya está firmado y no puede modificarse. Si algo quedó mal, ' +
+        'avisá al despacho para que se registre en la bitácora del viaje.',
+    );
   }
 
   private async assertDriver(driverId: string, user: ActiveUserInterface) {

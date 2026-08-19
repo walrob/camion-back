@@ -52,7 +52,7 @@ export class CompaniesController {
   @ApiOperation({
     summary:
       'Crea una empresa con su usuario administrador y arranca el trial de ' +
-      '21 días del plan Operación.',
+      '30 días del plan Operación.',
   })
   async register(@Body() dto: RegisterCompanyDto) {
     const alta = await this.companiesService.register(dto);

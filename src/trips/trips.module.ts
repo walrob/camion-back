@@ -12,10 +12,14 @@ import { HrModule } from 'src/hr/hr.module';
 import { AlertsModule } from 'src/alerts/alerts.module';
 import { SequencesModule } from 'src/common/sequences/sequences.module';
 import { Trailer } from 'src/fleet/entities/trailer.entity';
+import { Settlement } from 'src/settlements/entities/settlement.entity';
 
 @Module({
   imports: [
-    TenantTypeOrmModule.forFeature([Trip, Trailer]),
+    // `Settlement` entra sólo como entidad (no el módulo) para poder consultar
+    // si un viaje ya se rindió sin depender de `SettlementsModule`, que a su
+    // vez depende de éste.
+    TenantTypeOrmModule.forFeature([Trip, Trailer, Settlement]),
     forwardRef(() => AuthModule),
     FleetModule,
     DriversModule,

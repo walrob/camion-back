@@ -109,8 +109,15 @@ export class IncidentsController {
     return this.incidentsService.assign(id, dto, user);
   }
 
+  /**
+   * Cambia el estado, y por el mismo camino reabre uno resuelto.
+   *
+   * Gerencia entra acá porque puede reabrir; el taller sigue pudiendo mover el
+   * estado del trabajo pero no revertir un cierre (lo corta el servicio, no
+   * este decorador).
+   */
   @Patch(':id/status')
-  @Auth(Role.ADMIN, Role.DISPATCHER, Role.MAINTENANCE)
+  @Auth(Role.ADMIN, Role.MANAGER, Role.DISPATCHER, Role.MAINTENANCE)
   changeStatus(
     @Param('id') id: string,
     @Body() dto: ChangeIncidentStatusDto,

@@ -4,6 +4,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { TripsService } from './trips.service';
 import { Trip } from './entities/trip.entity';
 import { Trailer } from 'src/fleet/entities/trailer.entity';
+import { Settlement } from 'src/settlements/entities/settlement.entity';
 import { TrucksService } from 'src/fleet/trucks.service';
 import { DriversService } from 'src/drivers/drivers.service';
 import { ChecklistsService } from 'src/checklists/checklists.service';
@@ -74,6 +75,11 @@ describe('TripsService: asignación según la situación del legajo', () => {
         { provide: getRepositoryToken(Trip), useValue: tripsRepo },
         // Se consulta para rechazar acoplados en modo inactivo.
         { provide: getRepositoryToken(Trailer), useValue: { findOne: jest.fn().mockResolvedValue(null) } },
+        // Se consulta para no dejar borrar un viaje ya liquidado.
+        {
+          provide: getRepositoryToken(Settlement),
+          useValue: { findOne: jest.fn().mockResolvedValue(null) },
+        },
         // Se consulta para rechazar camiones en modo inactivo (§2.3).
         {
           provide: TrucksService,

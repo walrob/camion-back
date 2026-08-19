@@ -82,7 +82,7 @@ export class SeedPlans1786250000000 implements MigrationInterface {
         setupFee: 290000,
         features: this.BASE,
         limits: {
-          retentionMonths: 6,
+          retentionMonths: 12,
           storageGb: 2,
           alertRules: 3,
           maintenancePlans: 0,

@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
@@ -19,6 +24,13 @@ import { Trip } from 'src/trips/entities/trip.entity';
 import { TripLogEntry } from 'src/trip-log/entities/trip-log-entry.entity';
 import { LimitsService } from 'src/plans/limits.service';
 import { getCurrentCompanyId } from 'src/common/tenant/tenant-context';
+import { TenantCronRunner } from 'src/common/tenant/tenant-cron.runner';
+import { AUDIT, AuditLogService } from 'src/audit-log/audit-log.service';
+import {
+  assertNoCerrado,
+  assertPuedeReabrir,
+  exigirMotivo,
+} from 'src/common/utils/registro-cerrado.util';
 
 const DEFAULT_THRESHOLDS: Record<string, string> = {
   idleHoursThreshold: '6',
@@ -47,6 +59,8 @@ export class AlertsService {
     private readonly entriesRepository: Repository<TripLogEntry>,
     private readonly gateway: AlertsGateway,
     private readonly limitsService: LimitsService,
+    private readonly cronRunner: TenantCronRunner,
+    private readonly auditLog: AuditLogService,
   ) {}
 
   // ───────── Núcleo ─────────
@@ -178,8 +192,21 @@ export class AlertsService {
   }
 
   // ───────── Cron: camión detenido ─────────
+
+  /**
+   * Corre sin request, así que no hay contexto de empresa: se hace una pasada
+   * por empresa. Sin eso, las consultas verían los camiones de todas juntas y el
+   * `TenantSubscriber` rechazaría la alerta por no saber de quién es.
+   */
   @Cron(CronExpression.EVERY_30_MINUTES)
-  async detectIdleTrucks(): Promise<void> {
+  detectIdleTrucks(): Promise<void> {
+    return this.cronRunner.porEmpresa('Camiones detenidos', () =>
+      this.detectIdleTrucksOfCompany(),
+    );
+  }
+
+  /** Una empresa, con su contexto ya abierto. */
+  private async detectIdleTrucksOfCompany(): Promise<void> {
     const idleHours = await this.getThreshold('idleHoursThreshold');
     const cutoff = new Date(Date.now() - idleHours * 60 * 60 * 1000);
 
@@ -252,18 +279,69 @@ export class AlertsService {
     });
   }
 
+  /**
+   * Avanza el estado de gestión de la alerta (vista → reconocida → resuelta).
+   *
+   * No puede retroceder desde resuelta: el front esconde los botones, pero eso
+   * no es un control — la API los aceptaba igual y una alerta podía volver a
+   * "nueva" sin que quedara rastro de quién la desenterró. Para volver atrás
+   * está `reopen`, que pide motivo.
+   */
   async setStatus(
     id: string,
     status: AlertStatus,
     user: ActiveUserInterface,
   ): Promise<Alert> {
-    const alert = await this.alertsRepository.findOne({ where: { id } });
-    if (!alert) throw new NotFoundException('Alerta no encontrada.');
+    const alert = await this.findOneOrFail(id);
+    assertNoCerrado(
+      alert.status === AlertStatus.RESOLVED,
+      'La alerta ya está resuelta. Si el problema sigue, reabrila indicando el motivo.',
+    );
     alert.status = status;
     alert.updatedBy = user.id;
     const saved = await this.alertsRepository.save(alert);
     this.gateway.emitUpdate(saved);
     return saved;
+  }
+
+  /**
+   * Vuelve a poner en gestión una alerta resuelta.
+   *
+   * Queda en `acknowledged` y no en `new`: alguien ya la vio y la trabajó, y
+   * fingir que es nueva ensucia el conteo de pendientes sin agregar nada.
+   */
+  async reopen(
+    id: string,
+    reason: string,
+    user: ActiveUserInterface,
+  ): Promise<Alert> {
+    const alert = await this.findOneOrFail(id);
+    assertPuedeReabrir(user);
+    if (alert.status !== AlertStatus.RESOLVED) {
+      throw new BadRequestException('La alerta no está resuelta.');
+    }
+    const motivo = exigirMotivo(reason, 'la alerta');
+
+    alert.status = AlertStatus.ACKNOWLEDGED;
+    alert.updatedBy = user.id;
+    const saved = await this.alertsRepository.save(alert);
+
+    await this.auditLog.registrar(user, {
+      action: AUDIT.ALERT_REOPENED,
+      companyId: user.companyId,
+      entityType: 'alert',
+      entityId: id,
+      metadata: { titulo: saved.title, nivel: saved.level, motivo },
+    });
+
+    this.gateway.emitUpdate(saved);
+    return saved;
+  }
+
+  private async findOneOrFail(id: string): Promise<Alert> {
+    const alert = await this.alertsRepository.findOne({ where: { id } });
+    if (!alert) throw new NotFoundException('Alerta no encontrada.');
+    return alert;
   }
 
   // ───────── Umbrales ─────────

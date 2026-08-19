@@ -99,8 +99,10 @@ export class Incident extends TenantEntity {
   @Column({ type: 'text' })
   description: string;
 
+  /** Se vuelve a `null` al reabrir: si no, quedaría una fecha de resolución de
+   *  un incidente que está abierto. */
   @Column({ type: 'timestamp', nullable: true })
-  resolvedAt: Date;
+  resolvedAt: Date | null;
 
   @OneToMany(() => IncidentEvent, (event) => event.incident)
   events: IncidentEvent[];

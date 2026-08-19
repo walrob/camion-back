@@ -9,6 +9,7 @@ import { EmploymentMovementType } from 'src/common/enums/employmentMovement.enum
 import { EmploymentStatus } from 'src/common/enums/employmentStatus.enum';
 import { TripStatus } from 'src/common/enums/tripStatus.enum';
 import { StorageService } from 'src/common/storage/storage.service';
+import { TenantCronRunner } from 'src/common/tenant/tenant-cron.runner';
 
 const activeUser = { id: 'hr-1', companyId: 'company-test', role: 'hr' };
 
@@ -46,6 +47,8 @@ describe('EmploymentMovementsService.computeStatus', () => {
         { provide: getRepositoryToken(Trip), useValue: {} },
         // El servicio guarda el archivo de respaldo del movimiento.
         { provide: StorageService, useValue: { uploadFile: jest.fn(), getPresignedUrl: jest.fn() } },
+        // Sólo lo usa el cron; el resto de los tests no lo toca.
+        { provide: TenantCronRunner, useValue: { porEmpresa: jest.fn() } },
       ],
     }).compile();
 
@@ -218,6 +221,8 @@ describe('EmploymentMovementsService.create: viajes sin cerrar', () => {
         { provide: getRepositoryToken(Driver), useValue: driversRepo },
         { provide: getRepositoryToken(Trip), useValue: tripsRepo },
         { provide: StorageService, useValue: { uploadFile: jest.fn(), getPresignedUrl: jest.fn() } },
+        // Sólo lo usa el cron; el resto de los tests no lo toca.
+        { provide: TenantCronRunner, useValue: { porEmpresa: jest.fn() } },
       ],
     }).compile();
 

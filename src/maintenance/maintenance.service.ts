@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
@@ -26,12 +30,28 @@ import {
   number as num,
 } from 'src/common/pdf/pdf-report.util';
 import { LimitsService } from 'src/plans/limits.service';
+import { TenantCronRunner } from 'src/common/tenant/tenant-cron.runner';
+import { AUDIT, AuditLogService } from 'src/audit-log/audit-log.service';
+import { Role } from 'src/common/enums/role.enum';
+import {
+  assertNoCerrado,
+  assertPuedeReabrir,
+  exigirMotivo,
+} from 'src/common/utils/registro-cerrado.util';
 
 const ORDER_STATUS_LABELS: Record<string, string> = {
   [MaintenanceOrderStatus.OPEN]: 'Abierta',
   [MaintenanceOrderStatus.IN_PROGRESS]: 'En proceso',
   [MaintenanceOrderStatus.DONE]: 'Finalizada',
 };
+
+/**
+ * Quién reabre una orden de trabajo.
+ *
+ * Se aparta de la lista general: acá entra el taller —es quien ve que el
+ * arreglo no quedó— y no entra el despachante, que no gestiona mantenimiento.
+ */
+const ROLES_QUE_REABREN_ORDENES: readonly Role[] = [Role.ADMIN, Role.MAINTENANCE];
 
 @Injectable()
 export class MaintenanceService {
@@ -43,6 +63,8 @@ export class MaintenanceService {
     private readonly trucksService: TrucksService,
     private readonly alertsService: AlertsService,
     private readonly limitsService: LimitsService,
+    private readonly cronRunner: TenantCronRunner,
+    private readonly auditLog: AuditLogService,
   ) {}
 
   // ───────── Planes ─────────
@@ -184,19 +206,68 @@ export class MaintenanceService {
     return report.finish();
   }
 
+  /**
+   * Edita una orden abierta o en proceso.
+   *
+   * Una orden finalizada no se toca por acá: sus kilómetros y su fecha son la
+   * base desde la que el plan cuenta el próximo service, así que editarla
+   * después de cerrada corre vencimientos de mantenimiento sin que nadie se
+   * entere. Si hay que corregirla, se reabre con motivo (`reopenOrder`).
+   */
   async updateOrder(
     id: string,
     dto: UpdateOrderDto,
     user: ActiveUserInterface,
   ): Promise<MaintenanceOrder> {
     const order = await this.findOrder(id);
-    const wasDone = order.status === MaintenanceOrderStatus.DONE;
+    assertNoCerrado(
+      order.status === MaintenanceOrderStatus.DONE,
+      'La orden está finalizada: para corregirla hay que reabrirla indicando el motivo.',
+    );
     Object.assign(order, dto, { updatedBy: user.id });
     const saved = await this.ordersRepository.save(order);
     await this.syncTruckStatus(saved, user);
-    if (!wasDone && saved.status === MaintenanceOrderStatus.DONE) {
+    // Venía abierta por la guarda de arriba, así que llegar a `done` acá es
+    // siempre un cierre nuevo: corresponde correr el plan.
+    if (saved.status === MaintenanceOrderStatus.DONE) {
       await this.applyOrderToPlan(saved, user);
     }
+    return saved;
+  }
+
+  /**
+   * Reabre una orden finalizada y la deja en proceso.
+   *
+   * No se revierte lo que el cierre le hizo al plan: el próximo service quedó
+   * calculado desde esta orden y volver atrás ese número a mano sería adivinar.
+   * Al cerrarla de nuevo se vuelve a aplicar con los valores corregidos, que es
+   * el resultado que se busca.
+   */
+  async reopenOrder(
+    id: string,
+    reason: string,
+    user: ActiveUserInterface,
+  ): Promise<MaintenanceOrder> {
+    const order = await this.findOrder(id);
+    assertPuedeReabrir(user, ROLES_QUE_REABREN_ORDENES);
+    if (order.status !== MaintenanceOrderStatus.DONE) {
+      throw new BadRequestException('La orden no está finalizada.');
+    }
+    const motivo = exigirMotivo(reason, 'la orden de trabajo');
+
+    order.status = MaintenanceOrderStatus.IN_PROGRESS;
+    order.updatedBy = user.id;
+    const saved = await this.ordersRepository.save(order);
+    await this.syncTruckStatus(saved, user);
+
+    await this.auditLog.registrar(user, {
+      action: AUDIT.MAINTENANCE_ORDER_REOPENED,
+      companyId: user.companyId,
+      entityType: 'maintenance_order',
+      entityId: id,
+      metadata: { truckId: saved.truckId, planId: saved.planId, motivo },
+    });
+
     return saved;
   }
 
@@ -214,8 +285,20 @@ export class MaintenanceService {
   }
 
   // ───────── Cron de avisos ─────────
+
+  /**
+   * Corre sin request: se hace una pasada por empresa para que los umbrales y
+   * los planes sean los de cada una y las alertas nazcan con dueño.
+   */
   @Cron(CronExpression.EVERY_DAY_AT_7AM)
-  async evaluatePlans(): Promise<void> {
+  evaluatePlans(): Promise<void> {
+    return this.cronRunner.porEmpresa('Avisos de mantenimiento', () =>
+      this.evaluatePlansOfCompany(),
+    );
+  }
+
+  /** Una empresa, con su contexto ya abierto. */
+  private async evaluatePlansOfCompany(): Promise<void> {
     const kmThreshold = await this.alertsService.getThreshold('maintenanceKmThreshold');
     const daysThreshold = await this.alertsService.getThreshold('maintenanceDaysThreshold');
 

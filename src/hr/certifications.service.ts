@@ -9,6 +9,7 @@ import { CertificationStatus } from 'src/common/enums/certificationStatus.enum';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
 import { AlertsService } from 'src/alerts/alerts.service';
 import { StorageService } from 'src/common/storage/storage.service';
+import { TenantCronRunner } from 'src/common/tenant/tenant-cron.runner';
 
 const WARNING_DAYS = 30;
 
@@ -21,6 +22,7 @@ export class CertificationsService {
     private readonly certificationsRepository: Repository<Certification>,
     private readonly alertsService: AlertsService,
     private readonly storageService: StorageService,
+    private readonly cronRunner: TenantCronRunner,
   ) {}
 
   /** Calcula el estado de un permiso a partir de su vencimiento. */
@@ -115,11 +117,21 @@ export class CertificationsService {
   }
 
   /**
-   * Recalcula el estado de todos los permisos cada día. Cuando exista el módulo
-   * de alertas (Fase 5), aquí se generan alertas para los que vencen pronto.
+   * Recalcula el estado de todos los permisos cada día y emite las alertas de
+   * los que vencen pronto.
+   *
+   * Corre sin request: se hace una pasada por empresa para que las consultas
+   * filtren y las alertas nazcan con dueño.
    */
   @Cron(CronExpression.EVERY_DAY_AT_6AM)
-  async recalculateStatuses(): Promise<void> {
+  recalculateStatuses(): Promise<void> {
+    return this.cronRunner.porEmpresa('Estados de certificaciones', () =>
+      this.recalculateStatusesOfCompany(),
+    );
+  }
+
+  /** Una empresa, con su contexto ya abierto. */
+  private async recalculateStatusesOfCompany(): Promise<void> {
     const all = await this.certificationsRepository.find();
     let changed = 0;
     for (const cert of all) {

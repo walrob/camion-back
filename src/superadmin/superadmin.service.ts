@@ -110,7 +110,6 @@ export class SuperadminService {
           {
             baseFee: Number(plan.baseFee),
             pricePerVehicle: Number(plan.pricePerVehicle),
-            minVehicles: plan.minVehicles,
           },
           unidades,
           facturables,
@@ -323,7 +322,6 @@ export class SuperadminService {
         'description',
         'baseFee',
         'pricePerVehicle',
-        'minVehicles',
         'setupFee',
         'features',
         'limits',

@@ -23,6 +23,7 @@ import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface
 import { DriversService } from 'src/drivers/drivers.service';
 import { paginateAndSearch } from 'src/common/utils/paginate-and-search.util';
 import { resolveSort } from 'src/common/utils/resolve-sort.util';
+import { assertNoCerrado } from 'src/common/utils/registro-cerrado.util';
 
 // Columnas ordenables (clave del front → columna/alias real).
 const OEA_SORTABLE: Record<string, string> = {
@@ -200,10 +201,29 @@ export class OeaService {
     return hasObserved ? OeaResult.NO_CONFORME : OeaResult.CONFORME;
   }
 
+  /**
+   * Quién puede tocar la planilla y hasta cuándo.
+   *
+   * Dos controles distintos, y el orden importa:
+   *
+   *  - **Firmada, nadie.** La planilla OEA firmada es el comprobante de los 7
+   *    puntos ante AFIP. Editarla o borrarla después de la firma convierte el
+   *    control en un papel que dice lo que convenga; si está mal, se hace una
+   *    planilla nueva del viaje. Esto alcanza también al admin: no es un tema
+   *    de permisos sino de qué vale el documento.
+   *  - **Sin firmar, sólo el dueño.** El chofer únicamente la suya; la oficina,
+   *    cualquiera de la empresa.
+   */
   private async assertEditable(
     inspection: OeaInspection,
     user: ActiveUserInterface,
   ) {
+    assertNoCerrado(
+      !!inspection.signedAt,
+      'La planilla OEA ya está firmada: no puede modificarse ni eliminarse. ' +
+        'Si hay un error, registrá una planilla nueva para el viaje.',
+    );
+
     if (user.role !== Role.DRIVER) return;
     const driver = await this.driversService.findByUserId(user.id);
     if (inspection.driverId !== driver.id) {

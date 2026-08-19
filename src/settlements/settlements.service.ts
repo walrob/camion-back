@@ -24,6 +24,24 @@ import {
 } from 'src/common/pdf/pdf-report.util';
 import { TripLogType } from 'src/common/enums/tripLogType.enum';
 import { TripStatus } from 'src/common/enums/tripStatus.enum';
+import { Role } from 'src/common/enums/role.enum';
+import { AUDIT, AuditLogService } from 'src/audit-log/audit-log.service';
+import {
+  assertNoCerrado,
+  assertPuedeReabrir,
+  exigirMotivo,
+} from 'src/common/utils/registro-cerrado.util';
+
+/**
+ * Quién reabre una liquidación cerrada.
+ *
+ * Más corto que la lista general a propósito: acá hay plata rendida. El
+ * auditor consulta y cierra, pero no revierte un cierre — sería juez y parte.
+ */
+const ROLES_QUE_REABREN_LIQUIDACIONES: readonly Role[] = [
+  Role.ADMIN,
+  Role.MANAGER,
+];
 
 // Columnas ordenables (clave del front → columna con alias del query builder).
 const SETTLEMENT_SORTABLE: Record<string, string> = {
@@ -68,6 +86,7 @@ export class SettlementsService {
     private readonly tripsService: TripsService,
     private readonly tripLogService: TripLogService,
     private readonly storageService: StorageService,
+    private readonly auditLog: AuditLogService,
   ) {}
 
   /** Genera o recalcula la liquidación (en borrador) de un viaje. */
@@ -141,9 +160,60 @@ export class SettlementsService {
 
   async close(id: string, user: ActiveUserInterface): Promise<Settlement> {
     const settlement = await this.findOne(id);
+    assertNoCerrado(
+      settlement.status === SettlementStatus.CLOSED,
+      'La liquidación ya está cerrada.',
+    );
     settlement.status = SettlementStatus.CLOSED;
     settlement.updatedBy = user.id;
     return this.settlementsRepository.save(settlement);
+  }
+
+  /**
+   * Devuelve una liquidación cerrada a borrador para poder recalcularla.
+   *
+   * Es plata ya rendida al chofer, así que es la reapertura más restringida del
+   * sistema: sólo administración y gerencia, y queda auditada con el neto que
+   * tenía al reabrirse. Ese número es la única forma de comparar después contra
+   * el que quede al volver a cerrar.
+   */
+  async reopen(
+    id: string,
+    reason: string,
+    user: ActiveUserInterface,
+  ): Promise<Settlement> {
+    const settlement = await this.findOne(id);
+    assertPuedeReabrir(user, ROLES_QUE_REABREN_LIQUIDACIONES);
+    if (settlement.status !== SettlementStatus.CLOSED) {
+      throw new BadRequestException('La liquidación no está cerrada.');
+    }
+    const motivo = exigirMotivo(reason, 'la liquidación');
+
+    settlement.status = SettlementStatus.DRAFT;
+    settlement.updatedBy = user.id;
+    const saved = await this.settlementsRepository.save(settlement);
+
+    await this.auditLog.registrar(user, {
+      action: AUDIT.SETTLEMENT_REOPENED,
+      companyId: user.companyId,
+      entityType: 'settlement',
+      entityId: id,
+      metadata: {
+        tripId: settlement.tripId,
+        netoAlReabrir: Number(settlement.netToSettle),
+        motivo,
+      },
+    });
+
+    return saved;
+  }
+
+  /** ¿El viaje tiene una liquidación cerrada? Lo consultan viajes y combustible. */
+  async estaLiquidado(tripId: string): Promise<boolean> {
+    const cerrada = await this.settlementsRepository.findOne({
+      where: { tripId, status: SettlementStatus.CLOSED },
+    });
+    return !!cerrada;
   }
 
   async findOne(id: string): Promise<Settlement> {

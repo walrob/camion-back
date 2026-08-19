@@ -24,6 +24,7 @@ import {
 import { EmploymentStatus } from 'src/common/enums/employmentStatus.enum';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
 import { StorageService } from 'src/common/storage/storage.service';
+import { TenantCronRunner } from 'src/common/tenant/tenant-cron.runner';
 
 /** Fecha de hoy en 'YYYY-MM-DD' (las columnas `date` se comparan como string). */
 const asDateStr = (d: Date): string => {
@@ -63,6 +64,7 @@ export class EmploymentMovementsService {
     @InjectRepository(Trip)
     private readonly tripsRepository: Repository<Trip>,
     private readonly storageService: StorageService,
+    private readonly cronRunner: TenantCronRunner,
   ) {}
 
   // ───────────────────────── Cálculo del estado ─────────────────────────
@@ -454,9 +456,20 @@ export class EmploymentMovementsService {
   /**
    * Cierra los estados vencidos: cuando una licencia o suspensión llega a su
    * `endDate`, el empleado vuelve a ACTIVE sin que RRHH tenga que tocar nada.
+   *
+   * Corre sin request: se hace una pasada por empresa. Sin contexto, la consulta
+   * de movimientos no filtraría y recorrería los legajos de todas las empresas
+   * en una sola vuelta.
    */
   @Cron(CronExpression.EVERY_DAY_AT_6AM)
-  async recalculateStatuses(): Promise<void> {
+  recalculateStatuses(): Promise<void> {
+    return this.cronRunner.porEmpresa('Estados laborales', () =>
+      this.recalculateStatusesOfCompany(),
+    );
+  }
+
+  /** Una empresa, con su contexto ya abierto. */
+  private async recalculateStatusesOfCompany(): Promise<void> {
     const employeeIds = await this.movementsRepository
       .createQueryBuilder('m')
       .select('DISTINCT m.employeeId', 'employeeId')

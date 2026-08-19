@@ -205,7 +205,6 @@ export class BillingService {
         {
           baseFee: Number(plan.baseFee),
           pricePerVehicle: Number(plan.pricePerVehicle),
-          minVehicles: plan.minVehicles,
         },
         unidades,
         facturables,
@@ -256,7 +255,6 @@ export class BillingService {
       {
         baseFee: Number(plan.baseFee),
         pricePerVehicle: Number(plan.pricePerVehicle),
-        minVehicles: plan.minVehicles,
       },
       unidades,
       facturables,
@@ -455,7 +453,6 @@ export class BillingService {
       {
         baseFee: Number(plan.baseFee),
         pricePerVehicle: Number(plan.pricePerVehicle),
-        minVehicles: plan.minVehicles,
       },
       unidades,
       facturables,

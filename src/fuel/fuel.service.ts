@@ -20,6 +20,17 @@ import {
   DateWindowOptions,
   resolveDateWindow,
 } from 'src/common/utils/date-window.util';
+import { assertNoCerrado } from 'src/common/utils/registro-cerrado.util';
+import { Settlement } from 'src/settlements/entities/settlement.entity';
+import { SettlementStatus } from 'src/common/enums/settlementStatus.enum';
+
+/**
+ * Cuánto tiempo tiene el chofer para corregir su propia carga.
+ *
+ * Un día cubre el error de tipeo que se descubre al llegar; más que eso ya es
+ * reescribir el histórico de consumo desde el celular.
+ */
+const HORAS_PARA_CORREGIR_DEL_CHOFER = 24;
 
 // Ventana del reporte de combustible. Cálculo tanque-lleno en memoria: se
 // mantiene acotado. Ajustable de forma independiente al resto de reportes.
@@ -75,6 +86,10 @@ export class FuelService {
     private readonly fuelRepository: Repository<FuelRecord>,
     @InjectRepository(Truck)
     private readonly trucksRepository: Repository<Truck>,
+    // Sólo para saber si el viaje de la carga ya se rindió; va por repositorio
+    // para no acoplar combustible al módulo de liquidaciones.
+    @InjectRepository(Settlement)
+    private readonly settlementsRepository: Repository<Settlement>,
     private readonly driversService: DriversService,
   ) {}
 
@@ -452,11 +467,51 @@ export class FuelService {
     return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
   }
 
+  /**
+   * Hasta cuándo se puede tocar una carga de combustible.
+   *
+   * Es el gasto más pesado de la operación y alimenta el costo por kilómetro,
+   * los rankings de consumo y la rendición del viaje, así que no puede quedar
+   * editable para siempre:
+   *
+   *  - **Liquidada, nadie.** Si el viaje al que pertenece ya tiene liquidación
+   *    cerrada, cambiarle los litros o el importe mueve plata ya rendida.
+   *    Primero se reabre la liquidación; ahí la carga vuelve a ser editable.
+   *  - **El chofer, sólo lo suyo y sólo el mismo día.** Corregir un error de
+   *    tipeo recién cargado es razonable; editar una carga de hace meses desde
+   *    el celular, no. Pasada la ventana lo corrige la oficina, que deja rastro
+   *    en `updatedBy`.
+   */
   private async assertEditable(record: FuelRecord, user: ActiveUserInterface) {
+    if (record.tripId) {
+      assertNoCerrado(
+        await this.estaLiquidado(record.tripId),
+        'El viaje de esta carga ya está liquidado. Para corregirla hay que ' +
+          'reabrir la liquidación.',
+      );
+    }
+
     if (user.role !== Role.DRIVER) return;
+
     const driver = await this.driversService.findByUserId(user.id);
     if (record.driverId !== driver.id) {
       throw new ForbiddenException('Esta carga no corresponde a su perfil.');
     }
+
+    const horas =
+      (Date.now() - new Date(record.createdAt).getTime()) / (1000 * 60 * 60);
+    assertNoCerrado(
+      horas > HORAS_PARA_CORREGIR_DEL_CHOFER,
+      'La carga ya no puede corregirse desde la app. Avisá a la oficina para ' +
+        'que la ajuste.',
+    );
+  }
+
+  /** ¿El viaje de la carga ya se rindió? */
+  private async estaLiquidado(tripId: string): Promise<boolean> {
+    const cerrada = await this.settlementsRepository.findOne({
+      where: { tripId, status: SettlementStatus.CLOSED },
+    });
+    return !!cerrada;
   }
 }

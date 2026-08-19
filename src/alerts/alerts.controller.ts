@@ -10,6 +10,7 @@ import {
 import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { AlertsService } from './alerts.service';
 import { SetThresholdDto } from './dto/set-threshold.dto';
+import { ReopenDto } from 'src/common/dto/reopen.dto';
 import { AlertLevel, AlertStatus } from 'src/common/enums/alert.enum';
 import { Auth } from 'src/auth/decorators/auth.decorator';
 import { Role } from 'src/common/enums/role.enum';
@@ -79,5 +80,19 @@ export class AlertsController {
   @Auth(Role.ADMIN, Role.MANAGER, Role.DISPATCHER, Role.HR)
   resolve(@Param('id') id: string, @ActiveUser() user: ActiveUserInterface) {
     return this.alertsService.setStatus(id, AlertStatus.RESOLVED, user);
+  }
+
+  /**
+   * Reabre una alerta resuelta. RRHH queda afuera: puede gestionar las suyas,
+   * pero revertir un cierre es de quien conduce la operación.
+   */
+  @Patch(':id/reopen')
+  @Auth(Role.ADMIN, Role.MANAGER, Role.DISPATCHER)
+  reopen(
+    @Param('id') id: string,
+    @Body() dto: ReopenDto,
+    @ActiveUser() user: ActiveUserInterface,
+  ) {
+    return this.alertsService.reopen(id, dto.reason, user);
   }
 }

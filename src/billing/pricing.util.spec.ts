@@ -18,17 +18,14 @@ import {
 const CONTROL: PlanFacturable = {
   baseFee: 59000,
   pricePerVehicle: 7900,
-  minVehicles: 3,
 };
 const OPERACION: PlanFacturable = {
   baseFee: 129000,
   pricePerVehicle: 12900,
-  minVehicles: 5,
 };
 const GESTION: PlanFacturable = {
   baseFee: 249000,
   pricePerVehicle: 18900,
-  minVehicles: 8,
 };
 
 const soloCamiones = (n: number): UnidadesFacturables => ({
@@ -78,35 +75,42 @@ describe('Precio mensual — clientes tipo del modelo comercial', () => {
   });
 });
 
-describe('Mínimo de vehículos del plan', () => {
-  it('una empresa por debajo del mínimo paga por el mínimo', () => {
-    // 4 camiones en Gestión (mínimo 8): 249.000 + 8 × 18.900
+/**
+ * Los planes ya no tienen mínimo facturable. Estos casos existen justamente
+ * para que no vuelva por la ventana: antes, una empresa chica en un plan grande
+ * pagaba camiones que no tenía.
+ */
+describe('Sin mínimo de vehículos', () => {
+  it('una empresa chica en un plan grande paga sólo lo que tiene', () => {
+    // 4 camiones en Gestión: 249.000 + 4 × 18.900. Antes eran 8 camiones.
     const r = calcularPrecioMensual(GESTION, soloCamiones(4));
-    expect(r.billedTrucks).toBe(8);
-    expect(r.amount).toBe(400200);
+    expect(r.billedTrucks).toBe(4);
+    expect(r.amount).toBe(324600);
   });
 
-  it('por encima del mínimo se cobra lo real', () => {
-    const r = calcularPrecioMensual(GESTION, soloCamiones(10));
-    expect(r.billedTrucks).toBe(10);
+  it('un solo camión factura un solo camión', () => {
+    const r = calcularPrecioMensual(CONTROL, soloCamiones(1));
+    expect(r.billedTrucks).toBe(1);
+    expect(r.amount).toBe(66900); // 59.000 + 1 × 7.900
   });
 
-  it('D3: los acoplados NO ayudan a alcanzar el mínimo', () => {
-    // 2 camiones + 10 acoplados en Control (mínimo 3 camiones).
+  it('sin camiones se paga sólo el abono', () => {
+    const r = calcularPrecioMensual(CONTROL, soloCamiones(0));
+    expect(r.billedTrucks).toBe(0);
+    expect(r.amount).toBe(59000);
+  });
+
+  it('los acoplados siguen sumando al 50 %, sin piso de camiones', () => {
     const unidades: UnidadesFacturables = {
       activeTrucks: 2,
       inactiveTrucks: 0,
       activeTrailers: 10,
       inactiveTrailers: 0,
     };
-    const { billedTrucks, billedUnits } = calcularUnidadesEquivalentes(
-      CONTROL,
-      unidades,
-    );
+    const { billedTrucks, billedUnits } = calcularUnidadesEquivalentes(unidades);
 
-    // El mínimo eleva los camiones de 2 a 3; los acoplados suman aparte al 50 %.
-    expect(billedTrucks).toBe(3);
-    expect(billedUnits).toBe(8); // 3 + 10 × 0,5
+    expect(billedTrucks).toBe(2);
+    expect(billedUnits).toBe(7); // 2 + 10 × 0,5
   });
 });
 
@@ -136,7 +140,7 @@ describe('Acoplados y modo inactivo', () => {
   });
 
   it('el acoplado inactivo factura al 15 % (50 % × 30 %)', () => {
-    const { billedUnits } = calcularUnidadesEquivalentes(OPERACION, {
+    const { billedUnits } = calcularUnidadesEquivalentes({
       activeTrucks: 10,
       inactiveTrucks: 0,
       activeTrailers: 0,

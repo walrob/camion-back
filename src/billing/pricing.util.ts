@@ -12,13 +12,12 @@
  *         más unidades.
  *   §2.4  Acoplado = 50 % de la tarifa por vehículo.
  *   §2.3  Modo inactivo = 30 % de la tarifa que le corresponda a esa unidad.
- *   §3.3  Mínimo de vehículos del plan = piso de unidades facturables.
  *   §7.4  Prepago anual −15 %, bianual −22 %.
  *
- * Decisión D3: el mínimo del plan se cuenta **sólo sobre camiones activos**; el
- * precio, en cambio, cuenta también acoplados y unidades inactivas. Son dos
- * cálculos distintos y mezclarlos factura de más a los clientes con muchos
- * acoplados.
+ * **Sin mínimo de vehículos.** Los planes tenían un piso facturable (3/5/8/25)
+ * que obligaba a explicar en la factura por qué se cobraban camiones que la
+ * empresa no tenía. Se quitó: se factura lo que hay. La compresión por tamaño
+ * la sigue produciendo el abono base al repartirse entre más unidades.
  */
 
 /** Factores del modelo comercial. Nombrados para que no aparezcan sueltos. */
@@ -50,7 +49,6 @@ export interface UnidadesFacturables {
 export interface PlanFacturable {
   baseFee: number;
   pricePerVehicle: number;
-  minVehicles: number;
 }
 
 /** Add-on contratado, ya resuelto a números. */
@@ -79,7 +77,7 @@ export interface DesglosePrecio {
   amount: number;
   /** Unidades equivalentes facturadas, para poder explicar la factura. */
   billedUnits: number;
-  /** Camiones que se facturaron, ya aplicado el mínimo del plan. */
+  /** Camiones activos facturados. */
   billedTrucks: number;
   lineas: LineaDetalle[];
 }
@@ -94,11 +92,9 @@ export const redondear = (n: number): number => Math.round(n * 100) / 100;
  * variable de los add-ons (GPS e IA se cobran por vehículo).
  */
 export function calcularUnidadesEquivalentes(
-  plan: PlanFacturable,
   unidades: UnidadesFacturables,
 ): { billedTrucks: number; billedUnits: number } {
-  // El mínimo del plan es un piso de CAMIONES ACTIVOS (D3).
-  const billedTrucks = Math.max(unidades.activeTrucks, plan.minVehicles);
+  const billedTrucks = unidades.activeTrucks;
 
   const billedUnits =
     billedTrucks +
@@ -122,10 +118,7 @@ export function calcularPrecioMensual(
   addons: AddonFacturable[] = [],
   prepago: Prepago = Prepago.MENSUAL,
 ): DesglosePrecio {
-  const { billedTrucks, billedUnits } = calcularUnidadesEquivalentes(
-    plan,
-    unidades,
-  );
+  const { billedTrucks, billedUnits } = calcularUnidadesEquivalentes(unidades);
 
   const baseAmount = redondear(plan.baseFee);
   const vehiclesAmount = redondear(billedUnits * plan.pricePerVehicle);
@@ -192,15 +185,7 @@ function describirUnidades(
   billedTrucks: number,
   billedUnits: number,
 ): string {
-  const partes: string[] = [];
-
-  if (billedTrucks > unidades.activeTrucks) {
-    partes.push(
-      `${billedTrucks} camiones (mínimo del plan; activos: ${unidades.activeTrucks})`,
-    );
-  } else {
-    partes.push(`${billedTrucks} camiones`);
-  }
+  const partes: string[] = [`${billedTrucks} camiones`];
 
   if (unidades.inactiveTrucks) {
     partes.push(`${unidades.inactiveTrucks} camiones inactivos al 30 %`);

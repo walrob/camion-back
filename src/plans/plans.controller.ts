@@ -36,7 +36,6 @@ export class PlansController {
       description: p.description,
       baseFee: Number(p.baseFee),
       pricePerVehicle: Number(p.pricePerVehicle),
-      minVehicles: p.minVehicles,
       setupFee: Number(p.setupFee),
       isNegotiated: p.isNegotiated,
       features: p.features ?? [],

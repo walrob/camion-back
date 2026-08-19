@@ -25,6 +25,7 @@ import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface
 import { StorageService } from 'src/common/storage/storage.service';
 import { AlertsService } from 'src/alerts/alerts.service';
 import { DriversService } from 'src/drivers/drivers.service';
+import { TenantCronRunner } from 'src/common/tenant/tenant-cron.runner';
 
 const WARNING_DAYS = 30;
 
@@ -75,6 +76,7 @@ export class DocumentsService {
     private readonly storageService: StorageService,
     private readonly alertsService: AlertsService,
     private readonly driversService: DriversService,
+    private readonly cronRunner: TenantCronRunner,
   ) {}
 
   computeStatus(expiryDate?: string | null): DocumentStatus {
@@ -288,8 +290,19 @@ export class DocumentsService {
     return this.documentsRepository.softDelete(id);
   }
 
+  /**
+   * Corre sin request: se hace una pasada por empresa para que las consultas
+   * filtren y las alertas nazcan con dueño.
+   */
   @Cron(CronExpression.EVERY_DAY_AT_6AM)
-  async recalculateStatuses(): Promise<void> {
+  recalculateStatuses(): Promise<void> {
+    return this.cronRunner.porEmpresa('Estados de documentos', () =>
+      this.recalculateStatusesOfCompany(),
+    );
+  }
+
+  /** Una empresa, con su contexto ya abierto. */
+  private async recalculateStatusesOfCompany(): Promise<void> {
     const all = await this.documentsRepository.find();
     for (const doc of all) {
       const status = this.computeStatus(doc.expiryDate);
