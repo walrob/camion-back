@@ -9,6 +9,7 @@ import { DriversService } from 'src/drivers/drivers.service';
 import { AlertsService } from 'src/alerts/alerts.service';
 import { SequencesService } from 'src/common/sequences/sequences.service';
 import { AUDIT, AuditLogService } from 'src/audit-log/audit-log.service';
+import { CatalogsService } from 'src/catalogs/catalogs.service';
 import {
   IncidentSeverity,
   IncidentStatus,
@@ -67,6 +68,9 @@ describe('IncidentsService: qué se puede hacer con un incidente resuelto', () =
         { provide: AlertsService, useValue: { createFromIncident: jest.fn() } },
         { provide: SequencesService, useValue: { nextCode: jest.fn() } },
         { provide: AuditLogService, useValue: auditLog },
+        // Sólo lo usa `create`, para validar el tipo contra el catálogo de la
+        // empresa; estos casos operan sobre incidentes ya existentes.
+        { provide: CatalogsService, useValue: { items: jest.fn() } },
       ],
     }).compile();
 

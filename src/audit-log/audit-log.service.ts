@@ -38,6 +38,17 @@ export const AUDIT = {
   ALERT_REOPENED: 'alert.reopened',
   MAINTENANCE_ORDER_REOPENED: 'maintenance.order_reopened',
   SETTLEMENT_REOPENED: 'settlement.reopened',
+  /**
+   * Ajustes de operación de la empresa. Cambiar si el checklist es obligatorio
+   * o si una rendición se puede reabrir altera lo que el sistema exige a todo
+   * el mundo: tiene que poder contestarse quién lo cambió y cuándo.
+   */
+  SETTINGS_UPDATED: 'settings.updated',
+  /**
+   * Catálogos de negocio. Renombrar o desactivar un tipo de gasto cambia lo que
+   * ve toda la operación y, si lleva comportamiento, cómo cierra una rendición.
+   */
+  CATALOG_UPDATED: 'catalog.updated',
   IMPERSONATION_STARTED: 'superadmin.impersonation_started',
   SUPERADMIN_VIEWED_COMPANY: 'superadmin.viewed_company',
 } as const;

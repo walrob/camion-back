@@ -13,6 +13,8 @@ import { AlertsModule } from 'src/alerts/alerts.module';
 import { SequencesModule } from 'src/common/sequences/sequences.module';
 import { Trailer } from 'src/fleet/entities/trailer.entity';
 import { Settlement } from 'src/settlements/entities/settlement.entity';
+import { OeaModule } from 'src/oea/oea.module';
+import { DocumentsModule } from 'src/documents/documents.module';
 
 @Module({
   imports: [
@@ -29,6 +31,12 @@ import { Settlement } from 'src/settlements/entities/settlement.entity';
     AlertsModule,
     // Correlativos por empresa para el código visible.
     SequencesModule,
+    // Los dos entran por los ajustes configurables de «qué se exige antes de
+    // salir»: la planilla OEA conforme y la documentación vigente
+    // (docs/CONFIGURACION.md §4.2). Ninguno de los dos módulos depende de
+    // viajes, así que no hace falta forwardRef.
+    OeaModule,
+    DocumentsModule,
   ],
   controllers: [TripsController],
   providers: [TripsService],

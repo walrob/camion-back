@@ -124,6 +124,23 @@ export class DocumentsService {
     });
   }
 
+  /**
+   * Documentos **vencidos** de una unidad, un acoplado o un chofer.
+   *
+   * Lo consulta viajes al asignar, cuando la empresa activó el bloqueo por
+   * documentación vencida (docs/CONFIGURACION.md §4.2). Devuelve la lista y no
+   * un booleano para poder decirle al usuario qué papel le falta.
+   */
+  expiredFor(
+    ownerType: DocumentOwnerType,
+    ownerId: string,
+  ): Promise<Document[]> {
+    return this.documentsRepository.find({
+      where: { ownerType, ownerId, status: DocumentStatus.EXPIRED },
+      order: { expiryDate: 'ASC' },
+    });
+  }
+
   async expiring(days = WARNING_DAYS): Promise<Array<Document & { owner: DocumentOwner }>> {
     const limit = new Date();
     limit.setDate(limit.getDate() + days);

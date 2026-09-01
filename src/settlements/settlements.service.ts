@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -26,6 +27,10 @@ import { TripLogType } from 'src/common/enums/tripLogType.enum';
 import { TripStatus } from 'src/common/enums/tripStatus.enum';
 import { Role } from 'src/common/enums/role.enum';
 import { AUDIT, AuditLogService } from 'src/audit-log/audit-log.service';
+import { SettingsService } from 'src/settings/settings.service';
+import { SETTING } from 'src/settings/settings.catalog';
+import { CatalogsService } from 'src/catalogs/catalogs.service';
+import { BEHAVIOR, CATALOG } from 'src/catalogs/catalogs.catalog';
 import {
   assertNoCerrado,
   assertPuedeReabrir,
@@ -87,6 +92,8 @@ export class SettlementsService {
     private readonly tripLogService: TripLogService,
     private readonly storageService: StorageService,
     private readonly auditLog: AuditLogService,
+    private readonly settings: SettingsService,
+    private readonly catalogsService: CatalogsService,
   ) {}
 
   /** Genera o recalcula la liquidación (en borrador) de un viaje. */
@@ -183,6 +190,14 @@ export class SettlementsService {
     user: ActiveUserInterface,
   ): Promise<Settlement> {
     const settlement = await this.findOne(id);
+    // La empresa puede decidir que una rendición cerrada sea definitiva para
+    // todos, incluido el administrador (docs/CONFIGURACION.md §4.3). El default
+    // es permitirlo, que es lo que el sistema hacía.
+    if (!(await this.settings.getBoolean(SETTING.SETTLEMENT_ALLOW_REOPEN))) {
+      throw new ForbiddenException(
+        'La empresa configuró las rendiciones cerradas como definitivas: no se pueden reabrir.',
+      );
+    }
     assertPuedeReabrir(user, ROLES_QUE_REABREN_LIQUIDACIONES);
     if (settlement.status !== SettlementStatus.CLOSED) {
       throw new BadRequestException('La liquidación no está cerrada.');
@@ -345,8 +360,19 @@ export class SettlementsService {
     const sorted = [...entries].sort(
       (a, b) => +new Date(a.occurredAt) - +new Date(b.occurredAt),
     );
-    const expenses = sorted.filter((e) => e.type !== TripLogType.CASH_ADVANCE);
-    const advances = sorted.filter((e) => e.type === TripLogType.CASH_ADVANCE);
+    // Qué resta lo dice el catálogo de la empresa: un tipo propio marcado como
+    // adelanto resta igual que el de fábrica (docs/CONFIGURACION.md §5).
+    const adelantos = new Set(
+      (await this.catalogsService.items(CATALOG.EXPENSE_TYPE))
+        .filter((i) => i.behavior === BEHAVIOR.ADVANCE)
+        .map((i) => i.key),
+    );
+    const etiquetaDeTipo = await this.catalogsService.etiquetas(
+      CATALOG.EXPENSE_TYPE,
+    );
+
+    const expenses = sorted.filter((e) => !adelantos.has(e.type));
+    const advances = sorted.filter((e) => adelantos.has(e.type));
 
     const report = new PdfReport({
       title: 'Liquidación de viaje',
@@ -430,7 +456,7 @@ export class SettlementsService {
         ],
         rows: expenses.map((e) => [
           dateTime(e.occurredAt),
-          typeLabel(e.type),
+          etiquetaDeTipo[e.type] ?? typeLabel(e.type),
           e.notes,
           e.liters != null ? num(e.liters, 2) : '',
           e.odometerKm != null ? `${num(e.odometerKm)} km` : '',
@@ -488,10 +514,10 @@ export class SettlementsService {
         { label: '% s/gastos', width: 18, align: 'right' },
       ],
       rows: byType.map(([type, amount]) => [
-        typeLabel(type),
+        etiquetaDeTipo[type] ?? typeLabel(type),
         num(counts[type] ?? 0),
         money(amount, currency),
-        type === TripLogType.CASH_ADVANCE || !base
+        adelantos.has(type) || !base
           ? '-'
           : `${num((Number(amount) / base) * 100, 1)} %`,
       ]),

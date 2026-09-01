@@ -38,6 +38,11 @@ import { Trailer } from 'src/fleet/entities/trailer.entity';
 import { Settlement } from 'src/settlements/entities/settlement.entity';
 import { BillingStatus } from 'src/common/enums/billing.enum';
 import { assertNoCerrado } from 'src/common/utils/registro-cerrado.util';
+import { OeaService } from 'src/oea/oea.service';
+import { DocumentsService } from 'src/documents/documents.service';
+import { SettingsService } from 'src/settings/settings.service';
+import { SETTING } from 'src/settings/settings.catalog';
+import { DocumentOwnerType } from 'src/common/enums/document.enum';
 
 /** Normaliza una fecha a 'YYYY-MM-DD', que es como se guardan las del legajo. */
 const toDateStr = (value: string | Date | undefined): string | undefined => {
@@ -90,6 +95,9 @@ export class TripsService {
     private readonly movementsService: EmploymentMovementsService,
     private readonly alertsService: AlertsService,
     private readonly sequences: SequencesService,
+    private readonly oeaService: OeaService,
+    private readonly documentsService: DocumentsService,
+    private readonly settings: SettingsService,
   ) {}
 
   async create(dto: CreateTripDto, user: ActiveUserInterface): Promise<Trip> {
@@ -107,6 +115,11 @@ export class TripsService {
     // (MODELO-COMERCIAL §2.3). Si se le pudiera asignar un viaje, el modo
     // inactivo pasaría a ser un descuento encubierto.
     await this.assertUnidadesFacturables(dto.truckId, dto.trailerId);
+
+    // Configurable: hay empresas que no dejan salir una unidad con un papel
+    // vencido y otras que prefieren el aviso y resolverlo en la ruta. Con el
+    // ajuste apagado —el default— el sistema sigue avisando por alerta.
+    await this.assertDocumentacionVigente(dto, driver.id);
 
     const trip = this.tripsRepository.create({
       ...tripData,
@@ -457,11 +470,26 @@ export class TripsService {
       throw new BadRequestException('El viaje ya fue iniciado o finalizado.');
     }
 
-    const approved = await this.checklistsService.isApprovedForTrip(id);
-    if (!approved) {
-      throw new BadRequestException(
-        'Debe completar y firmar el checklist pre-viaje antes de iniciar.',
-      );
+    // Qué se exige antes de salir lo decide la empresa (docs/CONFIGURACION.md
+    // §4.2). El default del checklist es `true`, que es lo que el sistema hacía
+    // antes de que esto fuera configurable: nadie se entera del cambio salvo
+    // que decida apagarlo.
+    if (await this.settings.getBoolean(SETTING.TRIP_REQUIRE_CHECKLIST)) {
+      const approved = await this.checklistsService.isApprovedForTrip(id);
+      if (!approved) {
+        throw new BadRequestException(
+          'Debe completar y firmar el checklist pre-viaje antes de iniciar.',
+        );
+      }
+    }
+
+    if (await this.settings.getBoolean(SETTING.TRIP_REQUIRE_OEA)) {
+      const conforme = await this.oeaService.isConformeForTrip(id);
+      if (!conforme) {
+        throw new BadRequestException(
+          'Debe completar y firmar la planilla OEA del viaje antes de iniciar.',
+        );
+      }
     }
 
     trip.status = TripStatus.IN_PROGRESS;
@@ -642,7 +670,46 @@ export class TripsService {
     }
   }
 
-  private generateCode(companyId: string): Promise<string> {
-    return this.sequences.nextCode(companyId, SequenceKey.TRIP, 'V-');
+  private async generateCode(companyId: string): Promise<string> {
+    const prefijo = await this.settings.getString(SETTING.TRIP_CODE_PREFIX);
+    return this.sequences.nextCode(companyId, SequenceKey.TRIP, prefijo);
+  }
+
+  /**
+   * Bloquea la asignación si la unidad, el acoplado o el chofer tienen algún
+   * documento vencido, cuando la empresa lo pidió.
+   *
+   * El mensaje nombra a quién le falta el papel: «no se puede asignar» sin decir
+   * cuál obliga a salir a buscarlo por todo el sistema.
+   */
+  private async assertDocumentacionVigente(
+    dto: CreateTripDto,
+    driverId: string,
+  ): Promise<void> {
+    if (!(await this.settings.getBoolean(SETTING.TRIP_BLOCK_ON_EXPIRED_DOCS))) {
+      return;
+    }
+
+    const aRevisar: { tipo: DocumentOwnerType; id: string; nombre: string }[] = [
+      { tipo: DocumentOwnerType.TRUCK, id: dto.truckId, nombre: 'el camión' },
+      { tipo: DocumentOwnerType.DRIVER, id: driverId, nombre: 'el chofer' },
+    ];
+    if (dto.trailerId) {
+      aRevisar.push({
+        tipo: DocumentOwnerType.TRAILER,
+        id: dto.trailerId,
+        nombre: 'el acoplado',
+      });
+    }
+
+    for (const { tipo, id, nombre } of aRevisar) {
+      const vencidos = await this.documentsService.expiredFor(tipo, id);
+      if (vencidos.length) {
+        const detalle = vencidos.map((d) => d.category).join(', ');
+        throw new BadRequestException(
+          `No se puede asignar el viaje: ${nombre} tiene documentación vencida (${detalle}).`,
+        );
+      }
+    }
   }
 }

@@ -47,8 +47,13 @@ export class TripLogEntry extends TenantEntity {
   @JoinColumn({ name: 'tripId' })
   trip: Trip;
 
-  @Column({ type: 'enum', enum: TripLogType })
-  type: TripLogType;
+  /**
+   * Clave del tipo de gasto. Texto y no enum: la empresa arma su propio
+   * catálogo (docs/CONFIGURACION.md §5). Lo que resta en la rendición lo decide
+   * el `behavior` del catálogo, no esta columna.
+   */
+  @Column({ length: 64 })
+  type: string;
 
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   amount: number;

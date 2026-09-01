@@ -36,6 +36,8 @@ import { MpPaymentsModule } from './mp-payments/mp-payments.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { SuperadminModule } from './superadmin/superadmin.module';
 import { AuditLogModule } from './audit-log/audit-log.module';
+import { SettingsModule } from './settings/settings.module';
+import { CatalogsModule } from './catalogs/catalogs.module';
 import { TenantModule } from './common/tenant/tenant.module';
 import { TenantContextMiddleware } from './common/tenant/tenant-context.middleware';
 
@@ -134,6 +136,10 @@ import { TenantContextMiddleware } from './common/tenant/tenant-context.middlewa
     InvitesModule,
     // Global: la auditoría la usan facturación, empresas y superadmin.
     AuditLogModule,
+    // Global: los ajustes de operación los consulta cualquier dominio.
+    SettingsModule,
+    // Global: los catálogos de negocio (tipos de gasto, de incidente…).
+    CatalogsModule,
     SuperadminModule,
   ],
   controllers: [],

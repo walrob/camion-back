@@ -23,6 +23,9 @@ import {
 import { assertNoCerrado } from 'src/common/utils/registro-cerrado.util';
 import { Settlement } from 'src/settlements/entities/settlement.entity';
 import { SettlementStatus } from 'src/common/enums/settlementStatus.enum';
+import { SettingsService } from 'src/settings/settings.service';
+import { SETTING } from 'src/settings/settings.catalog';
+import { BadRequestException } from '@nestjs/common';
 
 /**
  * Cuánto tiempo tiene el chofer para corregir su propia carga.
@@ -91,6 +94,7 @@ export class FuelService {
     @InjectRepository(Settlement)
     private readonly settlementsRepository: Repository<Settlement>,
     private readonly driversService: DriversService,
+    private readonly settings: SettingsService,
   ) {}
 
   async create(
@@ -109,6 +113,19 @@ export class FuelService {
       where: { id: dto.truckId },
     });
     if (!truck) throw new NotFoundException('Camión no encontrado.');
+
+    // Sin odómetro hay gasto pero no hay rendimiento. Cada empresa decide si
+    // eso la habilita a cargar igual (docs/CONFIGURACION.md §4.4). Se valida
+    // después de la idempotencia: una carga que ya entró no se rechaza por un
+    // ajuste que cambió después.
+    if (
+      dto.odometerKm == null &&
+      (await this.settings.getBoolean(SETTING.FUEL_REQUIRE_ODOMETER))
+    ) {
+      throw new BadRequestException(
+        'Cargá el odómetro: tu empresa lo pide en cada abastecimiento.',
+      );
+    }
 
     // Si lo carga un chofer, se fuerza su propio perfil.
     let driverId = dto.driverId;

@@ -15,6 +15,8 @@ import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface
 import { TripsService } from 'src/trips/trips.service';
 import { DriversService } from 'src/drivers/drivers.service';
 import { AlertsService } from 'src/alerts/alerts.service';
+import { CatalogsService } from 'src/catalogs/catalogs.service';
+import { BEHAVIOR, CATALOG } from 'src/catalogs/catalogs.catalog';
 
 @Injectable()
 export class TripLogService {
@@ -24,7 +26,41 @@ export class TripLogService {
     private readonly tripsService: TripsService,
     private readonly driversService: DriversService,
     private readonly alertsService: AlertsService,
+    private readonly catalogsService: CatalogsService,
   ) {}
+
+  /**
+   * El tipo tiene que existir en el catálogo de la empresa y estar activo.
+   *
+   * Reemplaza al `@IsEnum` del DTO: la lista ya no la fija el código. Un tipo
+   * desactivado se sigue mostrando en el histórico, pero no admite cargas
+   * nuevas.
+   */
+  private async assertTipoValido(type: string): Promise<void> {
+    const items = await this.catalogsService.items(CATALOG.EXPENSE_TYPE);
+    const item = items.find((i) => i.key === type);
+    if (!item) {
+      throw new BadRequestException(`Tipo de gasto desconocido: ${type}`);
+    }
+    if (!item.isActive) {
+      throw new BadRequestException(
+        `«${item.label}» está desactivado en la configuración de tu empresa.`,
+      );
+    }
+  }
+
+  /**
+   * Claves de tipo de gasto que **restan** en la cuenta del viaje.
+   *
+   * Se resuelve contra el catálogo de la empresa. Un tipo que el cliente creó y
+   * no marcó como adelanto suma, que es el default seguro.
+   */
+  private async clavesDeAdelanto(): Promise<Set<string>> {
+    const items = await this.catalogsService.items(CATALOG.EXPENSE_TYPE);
+    return new Set(
+      items.filter((i) => i.behavior === BEHAVIOR.ADVANCE).map((i) => i.key),
+    );
+  }
 
   async create(
     dto: CreateTripLogEntryDto,
@@ -37,6 +73,10 @@ export class TripLogService {
       });
       if (existing) return existing;
     }
+
+    // Después de la idempotencia: una carga que ya entró no se rechaza porque
+    // el catálogo cambió mientras el celular estaba sin señal.
+    await this.assertTipoValido(dto.type);
 
     const trip = await this.tripsService.findOne(dto.tripId);
     await this.assertTripOwnedByDriver(trip.driverId, user);
@@ -88,6 +128,11 @@ export class TripLogService {
   async summary(tripId: string) {
     const entries = await this.entriesRepository.find({ where: { tripId } });
 
+    // Qué resta y qué suma lo dice el catálogo de la empresa, no la clave: un
+    // tipo propio marcado como adelanto —«Adelanto por transferencia»— tiene
+    // que restar igual que el de fábrica (docs/CONFIGURACION.md §5).
+    const adelantos = await this.clavesDeAdelanto();
+
     const byType: Record<string, number> = {};
     let total = 0;
     let totalAdvances = 0;
@@ -95,7 +140,7 @@ export class TripLogService {
     for (const e of entries) {
       const amount = Number(e.amount);
       byType[e.type] = (byType[e.type] ?? 0) + amount;
-      if (e.type === TripLogType.CASH_ADVANCE) totalAdvances += amount;
+      if (adelantos.has(e.type)) totalAdvances += amount;
       else total += amount;
     }
 

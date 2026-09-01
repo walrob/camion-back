@@ -20,8 +20,13 @@ export class CreateIncidentDto {
   @IsOptional()
   tripId?: string;
 
-  @IsEnum(IncidentType)
-  type: IncidentType;
+  /**
+   * Clave del tipo de incidente: la valida el servicio contra el catálogo de
+   * la empresa, que puede tener tipos propios (docs/CONFIGURACION.md §5).
+   */
+  @IsString()
+  @IsNotEmpty()
+  type: string;
 
   @IsEnum(IncidentSeverity)
   @IsOptional()

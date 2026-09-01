@@ -66,8 +66,12 @@ export class Incident extends TenantEntity {
   @JoinColumn({ name: 'driverId' })
   driver: Driver;
 
-  @Column({ type: 'enum', enum: IncidentType })
-  type: IncidentType;
+  /**
+   * Clave del tipo de incidente. Texto y no enum: la empresa arma su propio
+   * catálogo (docs/CONFIGURACION.md §5).
+   */
+  @Column({ length: 64 })
+  type: string;
 
   @Column({
     type: 'enum',

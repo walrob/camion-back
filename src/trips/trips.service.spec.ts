@@ -11,6 +11,9 @@ import { ChecklistsService } from 'src/checklists/checklists.service';
 import { EmploymentMovementsService } from 'src/hr/employment-movements.service';
 import { AlertsService } from 'src/alerts/alerts.service';
 import { SequencesService } from 'src/common/sequences/sequences.service';
+import { OeaService } from 'src/oea/oea.service';
+import { DocumentsService } from 'src/documents/documents.service';
+import { SettingsService } from 'src/settings/settings.service';
 import { EmploymentStatus } from 'src/common/enums/employmentStatus.enum';
 import { EmploymentMovementType } from 'src/common/enums/employmentMovement.enum';
 
@@ -31,6 +34,7 @@ describe('TripsService: asignación según la situación del legajo', () => {
   let movementsService: { statusAt: jest.Mock; closeAt: jest.Mock };
   let alertsService: { createFromLeaveAssignment: jest.Mock };
   let sequencesService: { nextCode: jest.Mock };
+  let settingsService: { getBoolean: jest.Mock; getString: jest.Mock };
 
   /** Situación en la fecha del viaje y, opcionalmente, la de hoy. */
   const employmentIs = (
@@ -68,6 +72,12 @@ describe('TripsService: asignación según la situación del legajo', () => {
     };
     alertsService = { createFromLeaveAssignment: jest.fn() };
     sequencesService = { nextCode: jest.fn().mockResolvedValue('V-00001') };
+    // Ajustes en sus valores por defecto: el bloqueo por documentación vencida
+    // viene apagado, así que `create` no consulta documentos.
+    settingsService = {
+      getBoolean: jest.fn().mockResolvedValue(false),
+      getString: jest.fn().mockResolvedValue('V-'),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -91,6 +101,11 @@ describe('TripsService: asignación según la situación del legajo', () => {
         { provide: AlertsService, useValue: alertsService },
         // Correlativo del código de viaje, ahora por empresa.
         { provide: SequencesService, useValue: sequencesService },
+        // Se consultan sólo si la empresa activó «exigir OEA para iniciar» o
+        // «bloquear por documentación vencida»: con los defaults no se llaman.
+        { provide: OeaService, useValue: { isConformeForTrip: jest.fn() } },
+        { provide: DocumentsService, useValue: { expiredFor: jest.fn() } },
+        { provide: SettingsService, useValue: settingsService },
       ],
     }).compile();
 

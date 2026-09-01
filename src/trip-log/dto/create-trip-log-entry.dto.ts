@@ -1,5 +1,5 @@
 import {
-  IsEnum,
+
   IsInt,
   IsNotEmpty,
   IsNumber,
@@ -8,15 +8,21 @@ import {
   IsUUID,
   Min,
 } from 'class-validator';
-import { TripLogType } from 'src/common/enums/tripLogType.enum';
+
 
 export class CreateTripLogEntryDto {
   @IsUUID()
   @IsNotEmpty()
   tripId: string;
 
-  @IsEnum(TripLogType)
-  type: TripLogType;
+  /**
+   * Clave del tipo de gasto. No se valida contra un enum: la empresa puede
+   * tener tipos propios. Que exista y esté activo lo verifica el servicio
+   * contra el catálogo de la empresa (docs/CONFIGURACION.md §5).
+   */
+  @IsString()
+  @IsNotEmpty()
+  type: string;
 
   @IsNumber()
   @Min(0)

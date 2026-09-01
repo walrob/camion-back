@@ -133,6 +133,21 @@ export class OeaService {
     });
   }
 
+  /**
+   * ¿El viaje tiene su planilla OEA firmada y conforme?
+   *
+   * Lo consulta viajes cuando la empresa activó «exigir OEA para iniciar»
+   * (docs/CONFIGURACION.md §4.2). Sin relaciones ni ítems: es una pregunta de
+   * sí o no que se hace justo cuando el chofer aprieta Iniciar.
+   */
+  async isConformeForTrip(tripId: string): Promise<boolean> {
+    const inspection = await this.inspectionsRepository.findOne({
+      where: { tripId },
+      select: { id: true, result: true },
+    });
+    return inspection?.result === OeaResult.CONFORME;
+  }
+
   async findOne(id: string): Promise<OeaInspection> {
     const inspection = await this.inspectionsRepository.findOne({
       where: { id },

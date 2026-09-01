@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -11,12 +12,15 @@ import { CreateChecklistDto } from './dto/create-checklist.dto';
 import { UpdateChecklistItemDto } from './dto/update-item.dto';
 import { SignChecklistDto } from './dto/sign-checklist.dto';
 import {
+  ChecklistItemStatus,
   ChecklistResult,
-  DEFAULT_CHECKLIST_ITEMS,
 } from 'src/common/enums/checklist.enum';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
 import { DriversService } from 'src/drivers/drivers.service';
 import { assertNoCerrado } from 'src/common/utils/registro-cerrado.util';
+import { ChecklistTemplatesService } from './checklist-templates.service';
+import { AttachmentsService } from 'src/common/attachments/attachments.service';
+import { Truck } from 'src/fleet/entities/truck.entity';
 
 @Injectable()
 export class ChecklistsService {
@@ -25,7 +29,12 @@ export class ChecklistsService {
     private readonly checklistsRepository: Repository<Checklist>,
     @InjectRepository(ChecklistItem)
     private readonly itemsRepository: Repository<ChecklistItem>,
+    // Sólo para conocer el tipo de la unidad y elegir la plantilla.
+    @InjectRepository(Truck)
+    private readonly trucksRepository: Repository<Truck>,
     private readonly driversService: DriversService,
+    private readonly templatesService: ChecklistTemplatesService,
+    private readonly attachmentsService: AttachmentsService,
   ) {}
 
   /** Crea (o devuelve si ya existe) el checklist de un viaje con la plantilla. */
@@ -41,13 +50,29 @@ export class ChecklistsService {
     });
     if (existing) return existing;
 
+    // Los puntos salen de la plantilla de la empresa —por tipo de unidad si la
+    // hay— y, si nunca configuró ninguna, de la constante de siempre.
+    const truck = await this.trucksRepository.findOne({
+      where: { id: dto.truckId },
+      select: { id: true, type: true },
+    });
+    const puntos = await this.templatesService.puntosPara(truck?.type);
+
     const checklist = this.checklistsRepository.create({
       tripId: dto.tripId,
       truckId: dto.truckId,
       driverId: dto.driverId,
       createdBy: user.id,
-      items: DEFAULT_CHECKLIST_ITEMS.map((i) =>
-        this.itemsRepository.create({ key: i.key, label: i.label }),
+      // Copia, no referencia: si la plantilla cambia mañana, este checklist
+      // sigue mostrando con qué se revisó la unidad hoy.
+      items: puntos.map((p) =>
+        this.itemsRepository.create({
+          key: p.key,
+          label: p.label,
+          order: p.order,
+          isCritical: p.isCritical,
+          requiresPhotoOnFail: p.requiresPhotoOnFail,
+        }),
       ),
     });
     return this.checklistsRepository.save(checklist);
@@ -87,9 +112,36 @@ export class ChecklistsService {
     await this.assertDriver(checklist.driverId, user);
     this.assertNoFirmado(checklist);
 
+    const fallados = checklist.items.filter(
+      (i) => i.status === ChecklistItemStatus.FAIL,
+    );
+
+    // Si la empresa marcó un punto como "requiere foto en falla", la foto es
+    // parte del registro: firmar sin ella deja una falla sin respaldo, que es
+    // justamente lo que después no se puede reconstruir.
+    const sinFoto: string[] = [];
+    for (const item of fallados.filter((i) => i.requiresPhotoOnFail)) {
+      const adjuntos = await this.attachmentsService.listByEntity(
+        'checklist_item',
+        item.id,
+      );
+      if (!adjuntos.length) sinFoto.push(item.label);
+    }
+    if (sinFoto.length) {
+      throw new BadRequestException(
+        `Falta la foto de: ${sinFoto.join(', ')}. Sacá la foto de la falla antes de firmar.`,
+      );
+    }
+
+    // Una falla en un punto crítico rechaza el checklist. Antes toda firma
+    // aprobaba, con lo cual "aprobado" no significaba nada.
+    const critico = fallados.some((i) => i.isCritical);
+
     checklist.signatureKey = dto.signatureKey;
     checklist.signedAt = new Date();
-    checklist.result = ChecklistResult.APPROVED;
+    checklist.result = critico
+      ? ChecklistResult.REJECTED
+      : ChecklistResult.APPROVED;
     checklist.updatedBy = user.id;
     return this.checklistsRepository.save(checklist);
   }

@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 import { IPaginationOptions, Pagination } from 'nestjs-typeorm-paginate';
@@ -22,6 +26,8 @@ import { AlertsService } from 'src/alerts/alerts.service';
 import { SequencesService } from 'src/common/sequences/sequences.service';
 import { SequenceKey } from 'src/common/entities/company-sequence.entity';
 import { AUDIT, AuditLogService } from 'src/audit-log/audit-log.service';
+import { CatalogsService } from 'src/catalogs/catalogs.service';
+import { CATALOG } from 'src/catalogs/catalogs.catalog';
 import {
   assertNoCerrado,
   assertPuedeReabrir,
@@ -40,6 +46,7 @@ export class IncidentsService {
     private readonly alertsService: AlertsService,
     private readonly sequences: SequencesService,
     private readonly auditLog: AuditLogService,
+    private readonly catalogsService: CatalogsService,
   ) {}
 
   async create(
@@ -47,6 +54,16 @@ export class IncidentsService {
     user: ActiveUserInterface,
   ): Promise<Incident> {
     const driver = await this.driversService.findByUserId(user.id);
+
+    // El tipo sale del catálogo de la empresa, que puede tener los suyos: es lo
+    // que antes garantizaba el `@IsEnum` del DTO (docs/CONFIGURACION.md §5).
+    const tipos = await this.catalogsService.items(CATALOG.INCIDENT_TYPE);
+    const tipo = tipos.find((t) => t.key === dto.type);
+    if (!tipo || !tipo.isActive) {
+      throw new BadRequestException(
+        `Tipo de incidente no disponible: ${dto.type}`,
+      );
+    }
 
     const severity =
       dto.severity ??

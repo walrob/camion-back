@@ -48,6 +48,19 @@ export enum Feature {
   HR_BASIC = 'hr_basic',
   /** Exportación a Excel de listados. */
   EXPORT_EXCEL = 'export_excel',
+  /**
+   * Ajustes de operación de la empresa: qué se exige antes de salir, si una
+   * rendición cerrada se puede reabrir, etc.
+   *
+   * Gatea **escribir**, no leer: cualquier plan consulta su configuración
+   * efectiva —la app del chofer la necesita— pero sólo desde Operación se
+   * cambia. Control opera con los valores por defecto (CONFIGURACION §10).
+   */
+  SETTINGS = 'settings',
+  /** Plantilla propia del checklist pre-viaje. */
+  CHECKLIST_TEMPLATES = 'checklist_templates',
+  /** Editar los catálogos de negocio: tipos de gasto, de incidente, etc. */
+  CATALOGS = 'catalogs',
 
   // ── Gestión ──────────────────────────────────────────────────────────────
   /** Ranking y comparativa de consumo por camión y chofer. */
@@ -61,6 +74,12 @@ export enum Feature {
   HR_FULL = 'hr_full',
   /** Umbrales de alerta personalizables. */
   ALERT_THRESHOLDS = 'alert_thresholds',
+  /**
+   * Una plantilla de checklist distinta por tipo de unidad. La plantilla única
+   * de la empresa entra con `CHECKLIST_TEMPLATES`, en Operación; tener varias
+   * —un tractor con cisterna no se revisa como un furgón— es de Gestión.
+   */
+  CHECKLIST_BY_TYPE = 'checklist_by_type',
   /** Rol Auditor y trazabilidad de cambios. */
   AUDITOR_ROLE = 'auditor_role',
   /** Reportes programados por email. */
