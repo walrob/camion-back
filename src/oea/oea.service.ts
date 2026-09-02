@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -8,6 +9,7 @@ import { Repository } from 'typeorm';
 import { IPaginationOptions, Pagination } from 'nestjs-typeorm-paginate';
 import { OeaInspection } from './entities/oea-inspection.entity';
 import { OeaInspectionItem } from './entities/oea-inspection-item.entity';
+import { OeaTemplateItem } from './entities/oea-template-item.entity';
 import { CreateOeaInspectionDto } from './dto/create-oea-inspection.dto';
 import { UpdateOeaInspectionDto } from './dto/update-oea-inspection.dto';
 import { UpdateOeaItemDto } from './dto/update-oea-item.dto';
@@ -41,6 +43,8 @@ export class OeaService {
     private readonly inspectionsRepository: Repository<OeaInspection>,
     @InjectRepository(OeaInspectionItem)
     private readonly itemsRepository: Repository<OeaInspectionItem>,
+    @InjectRepository(OeaTemplateItem)
+    private readonly templateRepository: Repository<OeaTemplateItem>,
     private readonly driversService: DriversService,
   ) {}
 
@@ -71,7 +75,9 @@ export class OeaService {
       ...dto,
       driverId,
       createdBy: user.id,
-      items: DEFAULT_OEA_ITEMS.map((i) =>
+      // Los 7 puntos AFIP + precintos van siempre; después, lo que la empresa
+      // haya sumado a su planilla (docs/CONFIGURACION.md §6.2).
+      items: (await this.puntosDeLaPlanilla()).map((i) =>
         this.itemsRepository.create({
           key: i.key,
           label: i.label,
@@ -80,6 +86,111 @@ export class OeaService {
       ),
     });
     return this.inspectionsRepository.save(inspection);
+  }
+
+  // ───────── Plantilla de la empresa ─────────
+
+  /**
+   * Los puntos con los que se arma una planilla: el piso normativo primero, y
+   * después los propios de la empresa.
+   *
+   * El piso **no se toca**: los 7 puntos AFIP y los precintos son lo que exige
+   * la norma, no una preferencia. Lo configurable es lo que se agrega.
+   */
+  async puntosDeLaPlanilla(): Promise<
+    { key: string; label: string; section: string; isSystem: boolean }[]
+  > {
+    const propios = await this.templateRepository.find({
+      where: { isActive: true },
+      order: { order: 'ASC' },
+    });
+
+    return [
+      ...DEFAULT_OEA_ITEMS.map((i) => ({
+        key: i.key as string,
+        label: i.label,
+        section: i.section as string,
+        isSystem: true,
+      })),
+      ...propios.map((i) => ({
+        key: i.key,
+        label: i.label,
+        section: i.section,
+        isSystem: false,
+      })),
+    ];
+  }
+
+  /** Lo que muestra la pantalla de configuración: piso + propios, con estado. */
+  async plantilla() {
+    const propios = await this.templateRepository.find({ order: { order: 'ASC' } });
+    return {
+      base: DEFAULT_OEA_ITEMS.map((i) => ({
+        key: i.key as string,
+        label: i.label,
+        section: i.section as string,
+      })),
+      propios: propios.map((i) => ({
+        key: i.key,
+        label: i.label,
+        section: i.section,
+        order: i.order,
+        isActive: i.isActive,
+      })),
+    };
+  }
+
+  /**
+   * Reemplaza los puntos propios. Los que salen de la lista se **desactivan**:
+   * una planilla firmada el mes pasado tiene que seguir explicando qué se
+   * revisó.
+   */
+  async guardarPlantilla(
+    items: {
+      key: string;
+      label: string;
+      section: string;
+      order?: number;
+      isActive?: boolean;
+    }[],
+    user: ActiveUserInterface,
+  ) {
+    const claves = items.map((i) => i.key);
+    if (new Set(claves).size !== claves.length) {
+      throw new BadRequestException(
+        'Hay puntos con la misma clave: cada uno tiene que tener una distinta.',
+      );
+    }
+    const chocaConLaNorma = claves.find((k) =>
+      DEFAULT_OEA_ITEMS.some((d) => (d.key as string) === k),
+    );
+    if (chocaConLaNorma) {
+      throw new BadRequestException(
+        `«${chocaConLaNorma}» ya es un punto de la norma: no se puede duplicar.`,
+      );
+    }
+
+    const guardados = await this.templateRepository.find();
+
+    for (const [i, item] of items.entries()) {
+      let fila = guardados.find((g) => g.key === item.key);
+      if (!fila) fila = this.templateRepository.create({ key: item.key });
+      fila.label = item.label;
+      fila.section = item.section;
+      fila.order = item.order ?? i;
+      fila.isActive = item.isActive ?? true;
+      fila.updatedBy = user.id;
+      await this.templateRepository.save(fila);
+    }
+
+    for (const fila of guardados) {
+      if (claves.includes(fila.key) || !fila.isActive) continue;
+      fila.isActive = false;
+      fila.updatedBy = user.id;
+      await this.templateRepository.save(fila);
+    }
+
+    return this.plantilla();
   }
 
   paginate(

@@ -8,6 +8,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Put,
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
@@ -17,7 +18,8 @@ import { UpdateOeaInspectionDto } from './dto/update-oea-inspection.dto';
 import { UpdateOeaItemDto } from './dto/update-oea-item.dto';
 import { SignOeaDto } from './dto/sign-oea.dto';
 import { OeaFilterDto } from './dto/oea-filter.dto';
-import { Auth } from 'src/auth/decorators/auth.decorator';
+import { SaveOeaTemplateDto } from './dto/save-oea-template.dto';
+import { Auth, AuthFeature } from 'src/auth/decorators/auth.decorator';
 import { Role } from 'src/common/enums/role.enum';
 import { Feature } from 'src/common/enums/feature.enum';
 import { RequiresFeature } from 'src/auth/decorators/requires-feature.decorator';
@@ -38,6 +40,28 @@ export class OeaController {
     @ActiveUser() user: ActiveUserInterface,
   ) {
     return this.oeaService.create(dto, user);
+  }
+
+  /**
+   * La plantilla de la empresa: los puntos de la norma más los propios.
+   *
+   * La lectura la abre a cualquiera con sesión —el chofer ve la planilla que va
+   * a completar—; editarla es de `admin` y entra con la misma feature que el
+   * checklist propio, que es la que vende «plantillas de inspección propias».
+   */
+  @Get('template')
+  @Auth()
+  plantilla() {
+    return this.oeaService.plantilla();
+  }
+
+  @Put('template')
+  @AuthFeature(Feature.CHECKLIST_TEMPLATES, Role.ADMIN)
+  guardarPlantilla(
+    @Body() dto: SaveOeaTemplateDto,
+    @ActiveUser() user: ActiveUserInterface,
+  ) {
+    return this.oeaService.guardarPlantilla(dto.items, user);
   }
 
   @Get()

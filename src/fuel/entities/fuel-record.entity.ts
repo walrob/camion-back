@@ -62,8 +62,9 @@ export class FuelRecord extends TenantEntity {
   @Column({ nullable: true })
   tripId: string;
 
-  @Column({ type: 'enum', enum: FuelType, default: FuelType.DIESEL })
-  fuelType: FuelType;
+  /** Clave del combustible, del catálogo de la empresa (CONFIGURACION §5). */
+  @Column({ length: 64, default: 'diesel' })
+  fuelType: string;
 
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   liters: number;
@@ -76,6 +77,18 @@ export class FuelRecord extends TenantEntity {
 
   @Column({ default: 'ARS' })
   currency: string;
+
+  /**
+   * Conversión congelada a moneda base (docs/CONFIGURACION.md §7.2). Todo el
+   * tablero de consumo —costo por km, precio del litro— se calcula sobre
+   * `amountBase`: sumar reales con pesos daría un número que parece correcto y
+   * no lo es. `null` = pendiente de cotización.
+   */
+  @Column({ type: 'decimal', precision: 18, scale: 6, nullable: true })
+  exchangeRate: number | null;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  amountBase: number | null;
 
   // Odómetro al momento de la carga (para calcular rendimiento l/100km).
   @Column({ type: 'int', nullable: true })

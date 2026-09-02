@@ -12,14 +12,13 @@ import { Employee } from './entities/employee.entity';
 import { Driver } from 'src/drivers/entities/driver.entity';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
-import {
-  EmployeePosition,
-  POSITION_ROLE,
-} from 'src/common/enums/employeePosition.enum';
+import { Role } from 'src/common/enums/role.enum';
 import { EmploymentStatus } from 'src/common/enums/employmentStatus.enum';
 import { EmploymentMovementType } from 'src/common/enums/employmentMovement.enum';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
 import { UsersService } from 'src/users/users.service';
+import { CatalogsService } from 'src/catalogs/catalogs.service';
+import { CATALOG } from 'src/catalogs/catalogs.catalog';
 import { EmploymentMovementsService } from './employment-movements.service';
 import { paginateAndSearch } from 'src/common/utils/paginate-and-search.util';
 import { resolveSort } from 'src/common/utils/resolve-sort.util';
@@ -41,6 +40,7 @@ export class EmployeesService {
     private readonly employeesRepository: Repository<Employee>,
     private readonly usersService: UsersService,
     private readonly movementsService: EmploymentMovementsService,
+    private readonly catalogsService: CatalogsService,
   ) {}
 
   async create(
@@ -48,6 +48,13 @@ export class EmployeesService {
     user: ActiveUserInterface,
   ): Promise<Employee> {
     await this.assertDocumentAvailable(dto.documentId);
+    if (dto.position) {
+      await this.catalogsService.assertVigente(
+        CATALOG.EMPLOYEE_POSITION,
+        dto.position,
+        'Puesto',
+      );
+    }
 
     const { email, password, role, ...employeeData } = dto;
     let userId = dto.userId;
@@ -98,8 +105,11 @@ export class EmployeesService {
       throw new ConflictException(`Ya existe un usuario con el email ${email}.`);
     }
 
+    // El rol sale del puesto, y el puesto es del catálogo de la empresa: un
+    // puesto propio —«Playero»— trae el rol que le asignaron al crearlo
+    // (docs/CONFIGURACION.md §5.1).
     const derivedRole =
-      role ?? POSITION_ROLE[dto.position ?? EmployeePosition.DRIVER];
+      role ?? ((await this.catalogsService.rolDePuesto(dto.position)) as Role);
 
     const newUser = await this.usersService.create({
       email,
@@ -117,7 +127,7 @@ export class EmployeesService {
   paginate(
     options: IPaginationOptions,
     search?: string,
-    position?: EmployeePosition,
+    position?: string,
     employmentStatus?: EmploymentStatus,
     withoutDriver?: boolean,
     sortBy?: string,
@@ -155,7 +165,7 @@ export class EmployeesService {
   private async paginateWithoutDriver(
     options: IPaginationOptions,
     search?: string,
-    position?: EmployeePosition,
+    position?: string,
     employmentStatus?: EmploymentStatus,
   ): Promise<Pagination<Employee>> {
     const page = Number(options.page);

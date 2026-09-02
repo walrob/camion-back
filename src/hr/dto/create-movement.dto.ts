@@ -20,9 +20,10 @@ export class CreateMovementDto {
   type: EmploymentMovementType;
 
   /** Obligatorio (y solo válido) cuando `type` es LEAVE. */
-  @IsEnum(LeaveType)
+  // Del catálogo de la empresa: lo valida el servicio (CONFIGURACION §5).
+  @IsString()
   @IsOptional()
-  leaveType?: LeaveType;
+  leaveType?: string;
 
   @IsDateString()
   @IsNotEmpty()

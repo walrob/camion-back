@@ -13,8 +13,10 @@ export class CreateCertificationDto {
   @IsNotEmpty()
   employeeId: string;
 
-  @IsEnum(CertificationType)
-  type: CertificationType;
+  // Del catálogo de la empresa: lo valida el servicio (CONFIGURACION §5).
+  @IsString()
+  @IsNotEmpty()
+  type: string;
 
   @IsString()
   @IsOptional()

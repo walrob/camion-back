@@ -26,6 +26,9 @@ import { StorageService } from 'src/common/storage/storage.service';
 import { AlertsService } from 'src/alerts/alerts.service';
 import { DriversService } from 'src/drivers/drivers.service';
 import { TenantCronRunner } from 'src/common/tenant/tenant-cron.runner';
+import { CatalogsService } from 'src/catalogs/catalogs.service';
+import { CATALOG } from 'src/catalogs/catalogs.catalog';
+import { ALERT_RULE } from 'src/alerts/alerts.catalog';
 
 const WARNING_DAYS = 30;
 
@@ -77,15 +80,33 @@ export class DocumentsService {
     private readonly alertsService: AlertsService,
     private readonly driversService: DriversService,
     private readonly cronRunner: TenantCronRunner,
+    private readonly catalogsService: CatalogsService,
   ) {}
 
-  computeStatus(expiryDate?: string | null): DocumentStatus {
+  /**
+   * Con cuántos días de anticipación avisa la empresa. Sale de la regla
+   * «Documento por vencer» (docs/CONFIGURACION.md §6.3): antes eran 30 días
+   * fijos en el código y otros 30 repetidos en el front.
+   */
+  ventanaDeAviso(): Promise<number> {
+    return this.alertsService.getThreshold(ALERT_RULE.DOCUMENT_EXPIRY);
+  }
+
+  /**
+   * La ventana llega por parámetro y no se consulta adentro para no pegarle a
+   * la base una vez por documento en el cron diario: quien recorre la lista la
+   * pide una sola vez.
+   */
+  computeStatus(
+    expiryDate?: string | null,
+    warningDays = WARNING_DAYS,
+  ): DocumentStatus {
     if (!expiryDate) return DocumentStatus.VALID;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const expiry = new Date(expiryDate);
     const warn = new Date(today);
-    warn.setDate(warn.getDate() + WARNING_DAYS);
+    warn.setDate(warn.getDate() + warningDays);
     if (expiry < today) return DocumentStatus.EXPIRED;
     if (expiry <= warn) return DocumentStatus.EXPIRING;
     return DocumentStatus.VALID;
@@ -96,6 +117,12 @@ export class DocumentsService {
     file: Express.Multer.File | undefined,
     user: ActiveUserInterface,
   ): Promise<Document> {
+    await this.catalogsService.assertVigente(
+      CATALOG.DOCUMENT_CATEGORY,
+      dto.category,
+      'Categoría de documento',
+    );
+
     const fileKey = file
       ? await this.storageService.uploadFile(file, 'documents')
       : undefined;
@@ -103,7 +130,7 @@ export class DocumentsService {
     const document = this.documentsRepository.create({
       ...dto,
       fileKey,
-      status: this.computeStatus(dto.expiryDate),
+      status: this.computeStatus(dto.expiryDate, await this.ventanaDeAviso()),
       createdBy: user.id,
     });
     return this.documentsRepository.save(document);
@@ -141,9 +168,11 @@ export class DocumentsService {
     });
   }
 
-  async expiring(days = WARNING_DAYS): Promise<Array<Document & { owner: DocumentOwner }>> {
+  async expiring(days?: number): Promise<Array<Document & { owner: DocumentOwner }>> {
+    // Sin parámetro se usa la ventana que configuró la empresa, no un 30 fijo.
+    const dias = days ?? (await this.ventanaDeAviso());
     const limit = new Date();
-    limit.setDate(limit.getDate() + days);
+    limit.setDate(limit.getDate() + dias);
     const docs = await this.documentsRepository.find({
       where: {
         expiryDate: LessThanOrEqual(limit.toISOString().slice(0, 10)),
@@ -182,8 +211,13 @@ export class DocumentsService {
   }
 
   /** Exporta a Excel los documentos por vencer / vencidos. */
-  async exportExpiringXlsx(days = WARNING_DAYS): Promise<Buffer> {
+  async exportExpiringXlsx(days?: number): Promise<Buffer> {
     const docs = await this.expiring(days);
+    // Las categorías propias de la empresa también tienen que salir con su
+    // nombre en el Excel, no con la clave.
+    const etiquetas = await this.catalogsService.etiquetas(
+      CATALOG.DOCUMENT_CATEGORY,
+    );
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(
       wb,
@@ -192,7 +226,7 @@ export class DocumentsService {
           Entidad: OWNER_TYPE_LABELS[d.ownerType] ?? d.ownerType,
           Dueño: d.owner?.label ?? '-',
           Detalle: d.owner?.sublabel ?? '',
-          Categoria: CATEGORY_LABELS[d.category] ?? d.category,
+          Categoria: etiquetas[d.category] ?? CATEGORY_LABELS[d.category] ?? d.category,
           Numero: d.number ?? '',
           Emision: dateOnly(d.issueDate),
           Vencimiento: dateOnly(d.expiryDate),
@@ -296,7 +330,10 @@ export class DocumentsService {
       document.fileKey = await this.storageService.uploadFile(file, 'documents');
     }
     Object.assign(document, dto, { updatedBy: user.id });
-    document.status = this.computeStatus(document.expiryDate);
+    document.status = this.computeStatus(
+      document.expiryDate,
+      await this.ventanaDeAviso(),
+    );
     return this.documentsRepository.save(document);
   }
 
@@ -320,9 +357,10 @@ export class DocumentsService {
 
   /** Una empresa, con su contexto ya abierto. */
   private async recalculateStatusesOfCompany(): Promise<void> {
+    const warningDays = await this.ventanaDeAviso();
     const all = await this.documentsRepository.find();
     for (const doc of all) {
-      const status = this.computeStatus(doc.expiryDate);
+      const status = this.computeStatus(doc.expiryDate, warningDays);
       if (status !== doc.status) {
         doc.status = status;
         await this.documentsRepository.save(doc);

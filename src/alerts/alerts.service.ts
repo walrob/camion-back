@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -26,19 +27,19 @@ import { LimitsService } from 'src/plans/limits.service';
 import { getCurrentCompanyId } from 'src/common/tenant/tenant-context';
 import { TenantCronRunner } from 'src/common/tenant/tenant-cron.runner';
 import { AUDIT, AuditLogService } from 'src/audit-log/audit-log.service';
+import { PlanContextService } from 'src/plans/plan-context.service';
+import { Feature } from 'src/common/enums/feature.enum';
+import {
+  ALERT_RULE,
+  ALERT_RULES,
+  ALERT_RULE_BY_KEY,
+  AlertRuleDef,
+} from './alerts.catalog';
 import {
   assertNoCerrado,
   assertPuedeReabrir,
   exigirMotivo,
 } from 'src/common/utils/registro-cerrado.util';
-
-const DEFAULT_THRESHOLDS: Record<string, string> = {
-  idleHoursThreshold: '6',
-  expenseAmountThreshold: '100000',
-  expiryWarningDays: '30',
-  maintenanceKmThreshold: '1000',
-  maintenanceDaysThreshold: '15',
-};
 
 const OPS_ROLES = ['admin', 'manager', 'dispatcher'];
 
@@ -61,6 +62,7 @@ export class AlertsService {
     private readonly limitsService: LimitsService,
     private readonly cronRunner: TenantCronRunner,
     private readonly auditLog: AuditLogService,
+    private readonly planContext: PlanContextService,
   ) {}
 
   // ───────── Núcleo ─────────
@@ -134,7 +136,8 @@ export class AlertsService {
   }
 
   async createFromExpense(entry: { id: string; amount: number; type: string }) {
-    const threshold = await this.getThreshold('expenseAmountThreshold');
+    if (!(await this.reglaActiva(ALERT_RULE.EXPENSE))) return null;
+    const threshold = await this.getThreshold(ALERT_RULE.EXPENSE);
     if (Number(entry.amount) <= threshold) return null;
     return this.createAlert({
       level: AlertLevel.YELLOW,
@@ -207,7 +210,8 @@ export class AlertsService {
 
   /** Una empresa, con su contexto ya abierto. */
   private async detectIdleTrucksOfCompany(): Promise<void> {
-    const idleHours = await this.getThreshold('idleHoursThreshold');
+    if (!(await this.reglaActiva(ALERT_RULE.TRUCK_IDLE))) return;
+    const idleHours = await this.getThreshold(ALERT_RULE.TRUCK_IDLE);
     const cutoff = new Date(Date.now() - idleHours * 60 * 60 * 1000);
 
     const trucks = await this.trucksRepository.find({
@@ -344,43 +348,150 @@ export class AlertsService {
     return alert;
   }
 
-  // ───────── Umbrales ─────────
+  // ───────── Reglas del motor ─────────
+
+  /**
+   * Umbral efectivo de una regla: el de la empresa, o el del catálogo.
+   *
+   * Lo consultan el propio motor, mantenimiento, documentos y permisos. Devuelve
+   * el default aunque la regla esté apagada: quien decide si emitir o no es
+   * `reglaActiva`, y así un umbral no queda en cero por accidente.
+   */
   async getThreshold(key: string): Promise<number> {
+    const def = ALERT_RULE_BY_KEY.get(key);
     const config = await this.configRepository.findOne({ where: { key } });
-    const value = config?.value ?? DEFAULT_THRESHOLDS[key] ?? '0';
-    return Number(value);
+    return Number(config?.value ?? def?.threshold?.default ?? '0');
   }
 
-  async getAllThresholds() {
+  /**
+   * ¿La empresa quiere esta alerta? Por defecto **sí**: una empresa que nunca
+   * entró a configurar recibe exactamente las mismas alertas que antes.
+   */
+  async reglaActiva(key: string): Promise<boolean> {
+    if (ALERT_RULE_BY_KEY.get(key)?.siempreActiva) return true;
+    const config = await this.configRepository.findOne({ where: { key } });
+    return config?.enabled ?? true;
+  }
+
+  /** Las reglas con su estado efectivo: es lo que dibuja la pantalla. */
+  async reglas() {
     const configs = await this.configRepository.find();
-    const map: Record<string, { value: string; enabled: boolean }> = {};
-    for (const [key, value] of Object.entries(DEFAULT_THRESHOLDS)) {
-      const found = configs.find((c) => c.key === key);
-      map[key] = {
-        value: found?.value ?? value,
-        enabled: found?.enabled ?? true,
+    return ALERT_RULES.map((def) => {
+      const propia = configs.find((c) => c.key === def.key);
+      return {
+        ...def,
+        enabled: def.siempreActiva ? true : (propia?.enabled ?? true),
+        value: propia?.value ?? def.threshold?.default ?? null,
+        /** `true` si la empresa la tocó: es lo que consume cupo del plan. */
+        personalizada: !!propia,
+      };
+    });
+  }
+
+  /**
+   * Guarda la configuración de las reglas.
+   *
+   * Dos permisos distintos, a propósito (MODELO-COMERCIAL §4.1):
+   *
+   * - **Apagar o prender** una regla entra con la configuración (Operación).
+   * - **Cambiar un umbral** es «Umbrales de alerta personalizables», de Gestión.
+   *
+   * Y el cupo del plan —3 reglas en Control, 10 en Operación— se cuenta sobre
+   * las reglas que la empresa **configuró**, que es lo que existe como fila.
+   */
+  async guardarReglas(
+    reglas: { key: string; enabled?: boolean; value?: string }[],
+    user: ActiveUserInterface,
+  ) {
+    const companyId = getCurrentCompanyId();
+    const puedeUmbrales = companyId
+      ? await this.tieneFeatureUmbrales(companyId)
+      : true;
+
+    const configs = await this.configRepository.find();
+    const cambios: Record<string, { de: string; a: string }> = {};
+
+    for (const entrada of reglas) {
+      const def = ALERT_RULE_BY_KEY.get(entrada.key);
+      if (!def) throw new BadRequestException(`Regla desconocida: ${entrada.key}`);
+
+      const previa = configs.find((c) => c.key === entrada.key);
+      const enabled = def.siempreActiva ? true : (entrada.enabled ?? true);
+      const valorPrevio = previa?.value ?? def.threshold?.default ?? '';
+      const valor = this.normalizarUmbral(def, entrada.value, valorPrevio);
+
+      if (def.siempreActiva && !(entrada.enabled ?? true)) {
+        throw new BadRequestException(
+          `«${def.label}» no se puede desactivar: es parte del funcionamiento del sistema.`,
+        );
+      }
+      if (valor !== valorPrevio && !puedeUmbrales) {
+        throw new ForbiddenException(
+          'Cambiar los umbrales de alerta viene con el plan Gestión. ' +
+            'Con tu plan podés prender y apagar reglas.',
+        );
+      }
+
+      const sinCambios =
+        !!previa && previa.enabled === enabled && previa.value === valor;
+      const nadaQueGuardar =
+        !previa && enabled && valor === (def.threshold?.default ?? '');
+      if (sinCambios || nadaQueGuardar) continue;
+
+      // El cupo se consume al crear la primera configuración propia de una
+      // regla: es lo que el plan llama «reglas de alerta activas».
+      if (!previa && companyId) {
+        await this.limitsService.assertCanCreate(companyId, 'alertRules');
+      }
+
+      const fila = previa ?? this.configRepository.create({ key: entrada.key });
+      fila.enabled = enabled;
+      fila.value = valor;
+      await this.configRepository.save(fila);
+
+      cambios[entrada.key] = {
+        de: `${valorPrevio}${previa?.enabled === false ? ' (apagada)' : ''}`,
+        a: `${valor}${enabled ? '' : ' (apagada)'}`,
       };
     }
-    return map;
-  }
 
-  async setThreshold(key: string, value: string, enabled = true) {
-    let config = await this.configRepository.findOne({ where: { key } });
-
-    // El cupo del plan se consume por regla ACTIVA. Sólo se valida cuando la
-    // regla pasa a estar activa —al crearla o al reactivar una apagada—: editar
-    // el valor de una regla que ya estaba activa no suma ninguna.
-    const activandoNueva = !config && enabled;
-    const reactivando = !!config && !config.enabled && enabled;
-    const companyId = getCurrentCompanyId();
-
-    if (companyId && (activandoNueva || reactivando)) {
-      await this.limitsService.assertCanCreate(companyId, 'alertRules');
+    if (Object.keys(cambios).length) {
+      await this.auditLog.registrar(user, {
+        action: AUDIT.ALERT_RULES_UPDATED,
+        companyId: user.companyId,
+        entityType: 'alert_rule_config',
+        entityId: null,
+        metadata: { cambios },
+      });
     }
 
-    if (!config) config = this.configRepository.create({ key });
-    config.value = value;
-    config.enabled = enabled;
-    return this.configRepository.save(config);
+    return this.reglas();
+  }
+
+  private async tieneFeatureUmbrales(companyId: string): Promise<boolean> {
+    const contexto = await this.planContext.obtener(companyId);
+    return !!contexto?.features?.includes(Feature.ALERT_THRESHOLDS);
+  }
+
+  /** El umbral tiene que ser un número dentro del rango que declara la regla. */
+  private normalizarUmbral(
+    def: AlertRuleDef,
+    valor: string | undefined,
+    previo: string,
+  ): string {
+    if (!def.threshold) return '';
+    if (valor == null || valor === '') return previo;
+
+    const n = Number(valor);
+    if (!Number.isFinite(n)) {
+      throw new BadRequestException(`«${def.label}»: el umbral tiene que ser un número.`);
+    }
+    if (n < def.threshold.min || n > def.threshold.max) {
+      throw new BadRequestException(
+        `«${def.label}»: el valor tiene que estar entre ${def.threshold.min} y ` +
+          `${def.threshold.max} ${def.threshold.unit}.`,
+      );
+    }
+    return String(n);
   }
 }

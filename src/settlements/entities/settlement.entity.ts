@@ -47,6 +47,15 @@ export class Settlement extends TenantEntity {
   @Column({ type: 'simple-json', nullable: true })
   totalsByType: Record<string, number>;
 
+  /**
+   * Subtotales en la moneda en que se gastó, para un viaje internacional
+   * (docs/CONFIGURACION.md §7.4). El neto de la rendición sigue siendo uno solo,
+   * en moneda base; esto es lo que después se discute con el chofer, que gastó
+   * guaraníes y no pesos.
+   */
+  @Column({ type: 'simple-json', nullable: true })
+  totalsByCurrency: Record<string, number> | null;
+
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   totalExpenses: number;
 

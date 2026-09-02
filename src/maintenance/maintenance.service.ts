@@ -22,6 +22,7 @@ import { AlertLevel, AlertSourceType } from 'src/common/enums/alert.enum';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
 import { TrucksService } from 'src/fleet/trucks.service';
 import { AlertsService } from 'src/alerts/alerts.service';
+import { ALERT_RULE } from 'src/alerts/alerts.catalog';
 import { Truck } from 'src/fleet/entities/truck.entity';
 import {
   PdfReport,
@@ -299,8 +300,10 @@ export class MaintenanceService {
 
   /** Una empresa, con su contexto ya abierto. */
   private async evaluatePlansOfCompany(): Promise<void> {
-    const kmThreshold = await this.alertsService.getThreshold('maintenanceKmThreshold');
-    const daysThreshold = await this.alertsService.getThreshold('maintenanceDaysThreshold');
+    const kmThreshold = await this.alertsService.getThreshold(ALERT_RULE.MAINTENANCE_KM);
+    const daysThreshold = await this.alertsService.getThreshold(
+      ALERT_RULE.MAINTENANCE_DAYS,
+    );
 
     const plans = await this.allPlans();
     for (const plan of plans) {

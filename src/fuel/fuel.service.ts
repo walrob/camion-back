@@ -25,6 +25,9 @@ import { Settlement } from 'src/settlements/entities/settlement.entity';
 import { SettlementStatus } from 'src/common/enums/settlementStatus.enum';
 import { SettingsService } from 'src/settings/settings.service';
 import { SETTING } from 'src/settings/settings.catalog';
+import { CatalogsService } from 'src/catalogs/catalogs.service';
+import { CurrenciesService } from 'src/currencies/currencies.service';
+import { CATALOG } from 'src/catalogs/catalogs.catalog';
 import { BadRequestException } from '@nestjs/common';
 
 /**
@@ -95,6 +98,8 @@ export class FuelService {
     private readonly settlementsRepository: Repository<Settlement>,
     private readonly driversService: DriversService,
     private readonly settings: SettingsService,
+    private readonly catalogsService: CatalogsService,
+    private readonly currenciesService: CurrenciesService,
   ) {}
 
   async create(
@@ -113,6 +118,14 @@ export class FuelService {
       where: { id: dto.truckId },
     });
     if (!truck) throw new NotFoundException('Camión no encontrado.');
+
+    if (dto.fuelType) {
+      await this.catalogsService.assertVigente(
+        CATALOG.FUEL_TYPE,
+        dto.fuelType,
+        'Tipo de combustible',
+      );
+    }
 
     // Sin odómetro hay gasto pero no hay rendimiento. Cada empresa decide si
     // eso la habilita a cargar igual (docs/CONFIGURACION.md §4.4). Se valida
@@ -138,11 +151,25 @@ export class FuelService {
       dto.totalAmount ??
       (dto.pricePerLiter != null ? dto.pricePerLiter * dto.liters : 0);
 
+    const occurredAt = dto.occurredAt ? new Date(dto.occurredAt) : new Date();
+
+    // Conversión congelada a moneda base: el tablero de consumo se calcula
+    // sobre ella (docs/CONFIGURACION.md §7.2). Cargar en reales y que el costo
+    // por km salga como si fueran pesos es peor que no tener el dato.
+    const fx = await this.currenciesService.convertir(
+      totalAmount,
+      dto.currency,
+      occurredAt,
+    );
+
     const record = this.fuelRepository.create({
       ...dto,
       driverId,
       totalAmount,
-      occurredAt: dto.occurredAt ? new Date(dto.occurredAt) : new Date(),
+      currency: fx.currency,
+      exchangeRate: fx.exchangeRate,
+      amountBase: fx.amountBase,
+      occurredAt,
       createdBy: user.id,
     });
     return this.fuelRepository.save(record);
@@ -253,7 +280,7 @@ export class FuelService {
         driverId: b.driverId ?? null,
         distanceKm,
         consumedLiters: inSeg.reduce((s, r) => s + Number(r.liters), 0),
-        cost: inSeg.reduce((s, r) => s + Number(r.totalAmount), 0),
+        cost: inSeg.reduce((s, r) => s + Number(r.amountBase ?? 0), 0),
       });
     }
     return segments;
@@ -334,7 +361,7 @@ export class FuelService {
       allSegments.push(...segments);
 
       const totalLiters = recs.reduce((s, r) => s + Number(r.liters), 0);
-      const totalCost = recs.reduce((s, r) => s + Number(r.totalAmount), 0);
+      const totalCost = recs.reduce((s, r) => s + Number(r.amountBase ?? 0), 0);
       const last = recs[recs.length - 1]; // recs vienen en orden ascendente.
 
       byTruck.push({
@@ -371,7 +398,7 @@ export class FuelService {
         loads: 0,
       };
       t.totalLiters += Number(r.liters);
-      t.totalCost += Number(r.totalAmount);
+      t.totalCost += Number(r.amountBase ?? 0);
       t.loads += 1;
       driverTotals.set(r.driverId, t);
     }
@@ -402,7 +429,7 @@ export class FuelService {
       .sort((a, b) => b.totalCost - a.totalCost);
 
     const totalLiters = records.reduce((s, r) => s + Number(r.liters), 0);
-    const totalCost = records.reduce((s, r) => s + Number(r.totalAmount), 0);
+    const totalCost = records.reduce((s, r) => s + Number(r.amountBase ?? 0), 0);
     const fleet = this.efficiency(allSegments);
 
     return {

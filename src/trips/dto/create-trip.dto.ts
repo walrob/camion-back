@@ -3,8 +3,10 @@ import {
   IsDateString,
   IsNotEmpty,
   IsOptional,
+  IsNumber,
   IsString,
   IsUUID,
+  Min,
 } from 'class-validator';
 
 export class CreateTripDto {
@@ -47,6 +49,19 @@ export class CreateTripDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  /**
+   * Viático de monto fijo del viaje. Sólo se acepta si la empresa paga así
+   * (`settlement.perDiemMode`); el servicio lo valida.
+   */
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  perDiemAmount?: number;
+
+  @IsString()
+  @IsOptional()
+  perDiemCurrency?: string;
 
   /**
    * Confirmación explícita para asignar el viaje a un chofer que está de

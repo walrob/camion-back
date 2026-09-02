@@ -10,6 +10,9 @@ import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface
 import { AlertsService } from 'src/alerts/alerts.service';
 import { StorageService } from 'src/common/storage/storage.service';
 import { TenantCronRunner } from 'src/common/tenant/tenant-cron.runner';
+import { CatalogsService } from 'src/catalogs/catalogs.service';
+import { CATALOG } from 'src/catalogs/catalogs.catalog';
+import { ALERT_RULE } from 'src/alerts/alerts.catalog';
 
 const WARNING_DAYS = 30;
 
@@ -23,16 +26,28 @@ export class CertificationsService {
     private readonly alertsService: AlertsService,
     private readonly storageService: StorageService,
     private readonly cronRunner: TenantCronRunner,
+    private readonly catalogsService: CatalogsService,
   ) {}
 
-  /** Calcula el estado de un permiso a partir de su vencimiento. */
-  computeStatus(expiryDate?: string | null): CertificationStatus {
+  /**
+   * Con cuántos días de anticipación avisa la empresa. Sale de la regla
+   * «Permiso o habilitación por vencer» (docs/CONFIGURACION.md §6.3).
+   */
+  ventanaDeAviso(): Promise<number> {
+    return this.alertsService.getThreshold(ALERT_RULE.CERTIFICATION_EXPIRY);
+  }
+
+  /** Estado de un permiso según su vencimiento. */
+  computeStatus(
+    expiryDate?: string | null,
+    warningDays = WARNING_DAYS,
+  ): CertificationStatus {
     if (!expiryDate) return CertificationStatus.VALID;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const expiry = new Date(expiryDate);
     const warn = new Date(today);
-    warn.setDate(warn.getDate() + WARNING_DAYS);
+    warn.setDate(warn.getDate() + warningDays);
 
     if (expiry < today) return CertificationStatus.EXPIRED;
     if (expiry <= warn) return CertificationStatus.EXPIRING;
@@ -44,6 +59,12 @@ export class CertificationsService {
     file: Express.Multer.File | undefined,
     user: ActiveUserInterface,
   ): Promise<Certification> {
+    await this.catalogsService.assertVigente(
+      CATALOG.CERTIFICATION_TYPE,
+      dto.type,
+      'Tipo de permiso',
+    );
+
     // El fileKey lo define el archivo subido, nunca el cliente.
     const { fileKey: _ignored, ...rest } = dto;
     const fileKey = file
@@ -52,7 +73,7 @@ export class CertificationsService {
     const cert = this.certificationsRepository.create({
       ...rest,
       fileKey,
-      status: this.computeStatus(dto.expiryDate),
+      status: this.computeStatus(dto.expiryDate, await this.ventanaDeAviso()),
       createdBy: user.id,
     });
     return this.certificationsRepository.save(cert);
@@ -97,7 +118,7 @@ export class CertificationsService {
       cert.fileKey = await this.storageService.uploadFile(file, 'certifications');
     }
     Object.assign(cert, rest, { updatedBy: user.id });
-    cert.status = this.computeStatus(cert.expiryDate);
+    cert.status = this.computeStatus(cert.expiryDate, await this.ventanaDeAviso());
     return this.certificationsRepository.save(cert);
   }
 
@@ -132,10 +153,11 @@ export class CertificationsService {
 
   /** Una empresa, con su contexto ya abierto. */
   private async recalculateStatusesOfCompany(): Promise<void> {
+    const warningDays = await this.ventanaDeAviso();
     const all = await this.certificationsRepository.find();
     let changed = 0;
     for (const cert of all) {
-      const status = this.computeStatus(cert.expiryDate);
+      const status = this.computeStatus(cert.expiryDate, warningDays);
       if (status !== cert.status) {
         cert.status = status;
         await this.certificationsRepository.save(cert);

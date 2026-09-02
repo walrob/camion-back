@@ -5,11 +5,12 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { AlertsService } from './alerts.service';
-import { SetThresholdDto } from './dto/set-threshold.dto';
+import { SaveAlertRulesDto } from './dto/save-alert-rules.dto';
 import { ReopenDto } from 'src/common/dto/reopen.dto';
 import { AlertLevel, AlertStatus } from 'src/common/enums/alert.enum';
 import { Auth } from 'src/auth/decorators/auth.decorator';
@@ -52,16 +53,28 @@ export class AlertsController {
     return this.alertsService.countActive();
   }
 
-  @Get('thresholds')
+  /**
+   * Reglas del motor con su estado efectivo. Reemplaza a `GET /thresholds`, que
+   * devolvía un mapa de claves sueltas sin nada que las explicara.
+   */
+  @Get('rules')
   @Auth(Role.ADMIN, Role.MANAGER)
-  thresholds() {
-    return this.alertsService.getAllThresholds();
+  rules() {
+    return this.alertsService.reglas();
   }
 
-  @Post('thresholds')
-  @Auth(Role.ADMIN, Role.MANAGER)
-  setThreshold(@Body() dto: SetThresholdDto) {
-    return this.alertsService.setThreshold(dto.key, dto.value, dto.enabled);
+  /**
+   * Prender/apagar reglas y ajustar umbrales. Los umbrales exigen el plan
+   * Gestión; prender y apagar, no (docs/CONFIGURACION.md §6.3). El cupo de
+   * reglas del plan lo valida el servicio.
+   */
+  @Put('rules')
+  @Auth(Role.ADMIN)
+  saveRules(
+    @Body() dto: SaveAlertRulesDto,
+    @ActiveUser() user: ActiveUserInterface,
+  ) {
+    return this.alertsService.guardarReglas(dto.rules, user);
   }
 
   @Patch(':id/seen')

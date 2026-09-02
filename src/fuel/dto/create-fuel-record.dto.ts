@@ -25,9 +25,10 @@ export class CreateFuelRecordDto {
   @IsOptional()
   tripId?: string;
 
-  @IsEnum(FuelType)
+  // Del catálogo de la empresa: lo valida el servicio (CONFIGURACION §5).
+  @IsString()
   @IsOptional()
-  fuelType?: FuelType;
+  fuelType?: string;
 
   @IsNumber()
   @Min(0)

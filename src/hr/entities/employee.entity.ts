@@ -63,12 +63,12 @@ export class Employee extends TenantEntity {
   @Column({ type: 'date', nullable: true })
   birthDate: string;
 
-  @Column({
-    type: 'enum',
-    enum: EmployeePosition,
-    default: EmployeePosition.DRIVER,
-  })
-  position: EmployeePosition;
+  /**
+   * Clave del puesto, del catálogo de la empresa (CONFIGURACION §5). De él sale
+   * el rol con el que la persona entra a la app, si se le crea acceso.
+   */
+  @Column({ length: 64, default: 'driver' })
+  position: string;
 
   @Column({ type: 'date', nullable: true })
   hireDate: string;

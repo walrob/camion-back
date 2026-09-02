@@ -43,8 +43,9 @@ export class Certification extends TenantEntity {
   @JoinColumn({ name: 'employeeId' })
   employee: Employee;
 
-  @Column({ type: 'enum', enum: CertificationType })
-  type: CertificationType;
+  /** Clave del tipo de permiso, del catálogo de la empresa (CONFIGURACION §5). */
+  @Column({ length: 64 })
+  type: string;
 
   @Column({ nullable: true })
   class: string;

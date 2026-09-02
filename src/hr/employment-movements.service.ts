@@ -25,6 +25,8 @@ import { EmploymentStatus } from 'src/common/enums/employmentStatus.enum';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
 import { StorageService } from 'src/common/storage/storage.service';
 import { TenantCronRunner } from 'src/common/tenant/tenant-cron.runner';
+import { CatalogsService } from 'src/catalogs/catalogs.service';
+import { CATALOG } from 'src/catalogs/catalogs.catalog';
 
 /** Fecha de hoy en 'YYYY-MM-DD' (las columnas `date` se comparan como string). */
 const asDateStr = (d: Date): string => {
@@ -65,6 +67,7 @@ export class EmploymentMovementsService {
     private readonly tripsRepository: Repository<Trip>,
     private readonly storageService: StorageService,
     private readonly cronRunner: TenantCronRunner,
+    private readonly catalogsService: CatalogsService,
   ) {}
 
   // ───────────────────────── Cálculo del estado ─────────────────────────
@@ -191,6 +194,13 @@ export class EmploymentMovementsService {
     if (!employee) throw new NotFoundException('Empleado no encontrado.');
 
     this.assertConsistent(dto.type, dto.leaveType, dto.startDate, dto.endDate);
+    if (dto.leaveType) {
+      await this.catalogsService.assertVigente(
+        CATALOG.LEAVE_TYPE,
+        dto.leaveType,
+        'Motivo de licencia',
+      );
+    }
     await this.assertNoOverlap(
       dto.employeeId,
       dto.type,
@@ -338,7 +348,7 @@ export class EmploymentMovementsService {
 
   private assertConsistent(
     type: EmploymentMovementType,
-    leaveType: LeaveType | undefined | null,
+    leaveType: string | undefined | null,
     startDate: string,
     endDate: string | undefined | null,
   ) {

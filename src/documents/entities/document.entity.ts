@@ -44,8 +44,9 @@ export class Document extends TenantEntity {
   @Column({ nullable: true })
   ownerId: string;
 
-  @Column({ type: 'enum', enum: DocumentCategory })
-  category: DocumentCategory;
+  /** Clave de la categoría, del catálogo de la empresa (CONFIGURACION §5). */
+  @Column({ length: 64 })
+  category: string;
 
   @Column({ nullable: true })
   number: string;

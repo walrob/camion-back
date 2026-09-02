@@ -10,6 +10,7 @@ import { EmploymentStatus } from 'src/common/enums/employmentStatus.enum';
 import { TripStatus } from 'src/common/enums/tripStatus.enum';
 import { StorageService } from 'src/common/storage/storage.service';
 import { TenantCronRunner } from 'src/common/tenant/tenant-cron.runner';
+import { CatalogsService } from 'src/catalogs/catalogs.service';
 
 const activeUser = { id: 'hr-1', companyId: 'company-test', role: 'hr' };
 
@@ -49,6 +50,7 @@ describe('EmploymentMovementsService.computeStatus', () => {
         { provide: StorageService, useValue: { uploadFile: jest.fn(), getPresignedUrl: jest.fn() } },
         // Sólo lo usa el cron; el resto de los tests no lo toca.
         { provide: TenantCronRunner, useValue: { porEmpresa: jest.fn() } },
+        { provide: CatalogsService, useValue: { assertVigente: jest.fn() } },
       ],
     }).compile();
 
@@ -223,6 +225,7 @@ describe('EmploymentMovementsService.create: viajes sin cerrar', () => {
         { provide: StorageService, useValue: { uploadFile: jest.fn(), getPresignedUrl: jest.fn() } },
         // Sólo lo usa el cron; el resto de los tests no lo toca.
         { provide: TenantCronRunner, useValue: { porEmpresa: jest.fn() } },
+        { provide: CatalogsService, useValue: { assertVigente: jest.fn() } },
       ],
     }).compile();
 

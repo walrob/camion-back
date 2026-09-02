@@ -69,7 +69,7 @@ export class IndicatorsService {
 
   // ───────── KPIs ─────────
   private async sumExpenses(f: IndicatorFilterDto, types?: TripLogType[]): Promise<number> {
-    const qb = this.expenseQuery(f).select('COALESCE(SUM(e.amount),0)', 's');
+    const qb = this.expenseQuery(f).select('COALESCE(SUM(e.amountBase),0)', 's');
     if (types) qb.andWhere('e.type IN (:...types)', { types });
     else qb.andWhere('e.type != :adv', { adv: TripLogType.CASH_ADVANCE });
     const { s } = await qb.getRawOne();
@@ -98,7 +98,7 @@ export class IndicatorsService {
   ): Promise<{ key: string; total: number }[]> {
     const qb = this.expenseQuery(f)
       .select(keyExpr, 'k')
-      .addSelect('COALESCE(SUM(e.amount),0)', 'total')
+      .addSelect('COALESCE(SUM(e.amountBase),0)', 'total')
       .andWhere('e.type != :adv', { adv: TripLogType.CASH_ADVANCE })
       .groupBy(keyExpr)
       .orderBy('total', 'DESC');

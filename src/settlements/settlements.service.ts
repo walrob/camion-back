@@ -30,6 +30,7 @@ import { AUDIT, AuditLogService } from 'src/audit-log/audit-log.service';
 import { SettingsService } from 'src/settings/settings.service';
 import { SETTING } from 'src/settings/settings.catalog';
 import { CatalogsService } from 'src/catalogs/catalogs.service';
+import { CurrenciesService } from 'src/currencies/currencies.service';
 import { BEHAVIOR, CATALOG } from 'src/catalogs/catalogs.catalog';
 import {
   assertNoCerrado,
@@ -94,7 +95,36 @@ export class SettlementsService {
     private readonly auditLog: AuditLogService,
     private readonly settings: SettingsService,
     private readonly catalogsService: CatalogsService,
+    private readonly currenciesService: CurrenciesService,
   ) {}
+
+  /**
+   * Viático de monto fijo del viaje, si la empresa paga así.
+   *
+   * **Dónde está el riesgo**: en modo `fixed`, los viáticos que el chofer haya
+   * cargado en la bitácora quedan fuera del total —los descuenta
+   * `TripLogService.summary` mirando el mismo ajuste— para no pagar dos veces lo
+   * mismo. En `both` suman los dos, que es lo que esa opción significa.
+   */
+  private async viaticoFijo(
+    trip: Trip,
+  ): Promise<{ enBase: number; original: number; currency: string } | null> {
+    const modo = await this.settings.getString(SETTING.SETTLEMENT_PER_DIEM_MODE);
+    if (modo === 'log') return null;
+    if (trip.perDiemAmount == null) return null;
+
+    const monto = Number(trip.perDiemAmount);
+    const fx = await this.currenciesService.convertir(
+      monto,
+      trip.perDiemCurrency ?? undefined,
+      trip.plannedStartAt ?? trip.createdAt ?? new Date(),
+    );
+
+    // Sin cotización no se inventa un número: el viático queda pendiente igual
+    // que cualquier movimiento en otra moneda (§7.3).
+    if (fx.amountBase == null) return null;
+    return { enBase: fx.amountBase, original: monto, currency: fx.currency };
+  }
 
   /** Genera o recalcula la liquidación (en borrador) de un viaje. */
   async generate(
@@ -123,7 +153,23 @@ export class SettlementsService {
       settlement.updatedBy = user.id;
     }
 
+    // Viático de monto fijo: se suma acá y no en la bitácora porque no lo cargó
+    // el chofer, lo definió la oficina al asignar el viaje (§6.4).
+    const viatico = await this.viaticoFijo(trip);
+    if (viatico) {
+      summary.byType = {
+        ...summary.byType,
+        per_diem: (summary.byType.per_diem ?? 0) + viatico.enBase,
+      };
+      summary.totalExpenses += viatico.enBase;
+      summary.netToSettle += viatico.enBase;
+    }
+
     settlement.totalsByType = summary.byType;
+    // Subtotales en la moneda en que se gastó: es lo que el chofer reconoce de
+    // un viaje internacional (docs/CONFIGURACION.md §7.4).
+    settlement.totalsByCurrency = summary.byCurrency;
+    settlement.currency = summary.currency;
     settlement.totalExpenses = summary.totalExpenses;
     settlement.totalAdvances = summary.totalAdvances;
     settlement.netToSettle = summary.netToSettle;
@@ -171,6 +217,21 @@ export class SettlementsService {
       settlement.status === SettlementStatus.CLOSED,
       'La liquidación ya está cerrada.',
     );
+
+    // Cerrar con movimientos sin cotización es cerrar una rendición a la que le
+    // falta plata: esos importes no entraron en el total (§7.3). Cada empresa
+    // decide si eso la frena, pero el default es que sí.
+    const summary = await this.tripLogService.summary(settlement.tripId);
+    if (
+      summary.pendingFx > 0 &&
+      (await this.settings.getBoolean(SETTING.SETTLEMENT_REQUIRE_FX))
+    ) {
+      throw new BadRequestException(
+        `Hay ${summary.pendingFx} movimiento(s) en otra moneda sin cotización cargada: ` +
+          'no entran en el total. Cargá la cotización del día y recalculá la rendición.',
+      );
+    }
+
     settlement.status = SettlementStatus.CLOSED;
     settlement.updatedBy = user.id;
     return this.settlementsRepository.save(settlement);
@@ -525,6 +586,33 @@ export class SettlementsService {
     });
 
     // ── Totales ────────────────────────────────────────────────────────────
+    // Viaje internacional: lo que se gastó en cada moneda, además del neto en
+    // la moneda de la empresa. Es lo que el chofer reconoce —gastó guaraníes,
+    // no pesos— y lo que evita la discusión al rendir (§7.4).
+    const monedas = Object.entries(summary.byCurrency ?? {}).filter(
+      ([code]) => code !== currency,
+    );
+    if (monedas.length) {
+      report.section('Gastado por moneda').table({
+        columns: [
+          { label: 'Moneda', width: 30 },
+          { label: 'Importe', width: 35, align: 'right' },
+        ],
+        rows: Object.entries(summary.byCurrency).map(([code, monto]) => [
+          code,
+          money(monto, code),
+        ]),
+      });
+
+      if (summary.pendingFx) {
+        report.paragraph(
+          `Atención: ${summary.pendingFx} movimiento(s) todavía sin cotización cargada. ` +
+            'No están incluidos en los totales.',
+          { muted: true },
+        );
+      }
+    }
+
     report.totals([
       { label: 'Total gastos rendidos', value: money(summary.totalExpenses, currency) },
       { label: 'Total adelantos entregados', value: money(summary.totalAdvances, currency) },

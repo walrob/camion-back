@@ -56,9 +56,12 @@ export class EmploymentMovement extends TenantEntity {
   @Column({ type: 'enum', enum: EmploymentMovementType })
   type: EmploymentMovementType;
 
-  /** Motivo de la licencia. Solo se completa cuando `type` es LEAVE. */
-  @Column({ type: 'enum', enum: LeaveType, nullable: true })
-  leaveType: LeaveType | null;
+  /**
+   * Motivo de la licencia, del catálogo de la empresa (CONFIGURACION §5). Sólo
+   * se completa cuando `type` es LEAVE.
+   */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  leaveType: string | null;
 
   /** Desde cuándo rige el movimiento. */
   @Column({ type: 'date' })

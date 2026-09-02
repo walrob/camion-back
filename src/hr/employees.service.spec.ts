@@ -6,6 +6,7 @@ import { Employee } from './entities/employee.entity';
 import { UsersService } from 'src/users/users.service';
 import { EmploymentMovementsService } from './employment-movements.service';
 import { EmployeePosition } from 'src/common/enums/employeePosition.enum';
+import { CatalogsService } from 'src/catalogs/catalogs.service';
 import { EmploymentMovementType } from 'src/common/enums/employmentMovement.enum';
 import { Role } from 'src/common/enums/role.enum';
 
@@ -37,6 +38,17 @@ describe('EmployeesService.create (alta con cuenta opcional)', () => {
         {
           provide: EmploymentMovementsService,
           useValue: movementsService,
+        },
+        // El rol ahora sale del catálogo de puestos de la empresa: se simula el
+        // mapa de fábrica (mecánico → taller, y chofer para el resto).
+        {
+          provide: CatalogsService,
+          useValue: {
+            assertVigente: jest.fn(),
+            rolDePuesto: jest.fn(async (p?: string) =>
+              p === 'mechanic' ? 'maintenance' : 'driver',
+            ),
+          },
         },
       ],
     }).compile();

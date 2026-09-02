@@ -35,11 +35,16 @@ export class OeaInspectionItem extends TenantEntity {
   @JoinColumn({ name: 'inspectionId' })
   inspection: OeaInspection;
 
-  @Column({ type: 'enum', enum: OeaItemKey })
-  key: OeaItemKey;
+  /**
+   * Clave del punto revisado. Texto y no enum: la empresa puede sumar puntos
+   * propios a su planilla (docs/CONFIGURACION.md §6.2). Los 7 de la norma
+   * siguen siendo constantes del código.
+   */
+  @Column({ length: 64 })
+  key: string;
 
-  @Column({ type: 'enum', enum: OeaSection })
-  section: OeaSection;
+  @Column({ length: 40 })
+  section: string;
 
   @Column()
   label: string;

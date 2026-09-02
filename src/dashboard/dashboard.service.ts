@@ -139,7 +139,7 @@ export class DashboardService {
         ? this.dailySeries(
             this.entriesRepository,
             'e.occurredAt',
-            'COALESCE(SUM(e.amount), 0)',
+            'COALESCE(SUM(e.amountBase), 0)',
             start,
             now,
             days,
@@ -153,7 +153,7 @@ export class DashboardService {
         ? this.aggWindow(
             this.entriesRepository,
             'e.occurredAt',
-            'COALESCE(SUM(e.amount), 0)',
+            'COALESCE(SUM(e.amountBase), 0)',
             prevStart,
             prevEnd,
             (qb) =>
@@ -321,7 +321,7 @@ export class DashboardService {
 
     const { sum } = await this.entriesRepository
       .createQueryBuilder('e')
-      .select('COALESCE(SUM(e.amount), 0)', 'sum')
+      .select('COALESCE(SUM(e.amountBase), 0)', 'sum')
       .where('e.occurredAt BETWEEN :start AND :end', { start, end })
       .andWhere('e.type != :advance', { advance: TripLogType.CASH_ADVANCE })
       .getRawOne();

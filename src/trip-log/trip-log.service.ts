@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { TripLogEntry } from './entities/trip-log-entry.entity';
 import { CreateTripLogEntryDto } from './dto/create-trip-log-entry.dto';
 import { UpdateTripLogEntryDto } from './dto/update-trip-log-entry.dto';
@@ -16,6 +16,9 @@ import { TripsService } from 'src/trips/trips.service';
 import { DriversService } from 'src/drivers/drivers.service';
 import { AlertsService } from 'src/alerts/alerts.service';
 import { CatalogsService } from 'src/catalogs/catalogs.service';
+import { CurrenciesService } from 'src/currencies/currencies.service';
+import { SettingsService } from 'src/settings/settings.service';
+import { SETTING } from 'src/settings/settings.catalog';
 import { BEHAVIOR, CATALOG } from 'src/catalogs/catalogs.catalog';
 
 @Injectable()
@@ -27,6 +30,8 @@ export class TripLogService {
     private readonly driversService: DriversService,
     private readonly alertsService: AlertsService,
     private readonly catalogsService: CatalogsService,
+    private readonly currenciesService: CurrenciesService,
+    private readonly settings: SettingsService,
   ) {}
 
   /**
@@ -90,19 +95,37 @@ export class TripLogService {
       );
     }
 
+    const occurredAt = dto.occurredAt ? new Date(dto.occurredAt) : new Date();
+
+    // Conversión a moneda base, congelada acá (docs/CONFIGURACION.md §7.2). Si
+    // no hay cotización de ese día, `amountBase` queda en null y el movimiento
+    // se guarda igual: el chofer no puede quedar trabado en la aduana.
+    const fx = await this.currenciesService.convertir(
+      Number(dto.amount),
+      dto.currency,
+      occurredAt,
+    );
+
     const entry = this.entriesRepository.create({
       ...dto,
-      occurredAt: dto.occurredAt ? new Date(dto.occurredAt) : new Date(),
+      currency: fx.currency,
+      exchangeRate: fx.exchangeRate,
+      amountBase: fx.amountBase,
+      occurredAt,
       createdBy: user.id,
     });
     const saved = await this.entriesRepository.save(entry);
 
-    // Alerta amarilla si el gasto supera el umbral configurado.
-    await this.alertsService.createFromExpense({
-      id: saved.id,
-      amount: Number(saved.amount),
-      type: saved.type,
-    });
+    // Alerta amarilla si el gasto supera el umbral configurado. Se compara en
+    // moneda base: el umbral está en la moneda de la empresa, no en la del
+    // gasto. Sin conversión todavía, no hay con qué comparar.
+    if (saved.amountBase != null) {
+      await this.alertsService.createFromExpense({
+        id: saved.id,
+        amount: Number(saved.amountBase),
+        type: saved.type,
+      });
+    }
 
     return saved;
   }
@@ -133,25 +156,59 @@ export class TripLogService {
     // que restar igual que el de fábrica (docs/CONFIGURACION.md §5).
     const adelantos = await this.clavesDeAdelanto();
 
+    // Con viático de monto fijo, lo que el chofer haya cargado como viático en
+    // la bitácora NO suma: ese importe lo pone la rendición desde el viaje. Sin
+    // esta exclusión se pagaría dos veces (docs/CONFIGURACION.md §6.4).
+    const modoViatico = await this.settings.getString(
+      SETTING.SETTLEMENT_PER_DIEM_MODE,
+    );
+    const viaticoDeBitacoraNoSuma = modoViatico === 'fixed';
+
     const byType: Record<string, number> = {};
+    /** Subtotales en la moneda en que se gastó (viaje internacional, §7.4). */
+    const byCurrency: Record<string, number> = {};
     let total = 0;
     let totalAdvances = 0;
+    /** Movimientos en otra moneda que todavía no tienen cotización (§7.3). */
+    let pendingFx = 0;
+    /** Viáticos de bitácora que no suman por el modo de viático fijo (§6.4). */
+    let noComputado = 0;
 
     for (const e of entries) {
-      const amount = Number(e.amount);
-      byType[e.type] = (byType[e.type] ?? 0) + amount;
-      if (adelantos.has(e.type)) totalAdvances += amount;
-      else total += amount;
+      byCurrency[e.currency] = (byCurrency[e.currency] ?? 0) + Number(e.amount);
+
+      // Todo lo que se suma va en moneda base: mezclar guaraníes con pesos da
+      // un número que parece correcto y no lo es. Lo que todavía no se pudo
+      // convertir no entra en el total y se cuenta aparte, para que nadie cierre
+      // una rendición a la que le falta la mitad.
+      if (e.amountBase == null) {
+        pendingFx++;
+        continue;
+      }
+      const enBase = Number(e.amountBase);
+      byType[e.type] = (byType[e.type] ?? 0) + enBase;
+
+      if (viaticoDeBitacoraNoSuma && e.type === 'per_diem') {
+        noComputado += enBase;
+        continue;
+      }
+      if (adelantos.has(e.type)) totalAdvances += enBase;
+      else total += enBase;
     }
 
     return {
       byType,
+      byCurrency,
       totalExpenses: total,
       totalAdvances,
       netToSettle: total - totalAdvances,
       count: entries.length,
+      pendingFx,
+      noComputado,
+      currency: await this.currenciesService.base(),
     };
   }
+
 
   async listByTripOwned(tripId: string, user: ActiveUserInterface) {
     const trip = await this.tripsService.findOne(tripId);

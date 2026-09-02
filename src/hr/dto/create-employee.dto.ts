@@ -49,9 +49,10 @@ export class CreateEmployeeDto {
   @IsOptional()
   birthDate?: string;
 
-  @IsEnum(EmployeePosition)
+  // Del catálogo de la empresa: lo valida el servicio (CONFIGURACION §5).
+  @IsString()
   @IsOptional()
-  position?: EmployeePosition;
+  position?: string;
 
   /**
    * Fecha de ingreso. Genera automáticamente el movimiento de alta (HIRE) que

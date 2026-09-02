@@ -102,4 +102,16 @@ export class Trip extends TenantEntity {
 
   @Column({ nullable: true })
   notes: string;
+
+  /**
+   * Viático de monto fijo del viaje, cuando la empresa lo paga así
+   * (`settlement.perDiemMode`, docs/CONFIGURACION.md §6.4). Lleva su propia
+   * moneda: un viaje a Asunción puede tener el viático en dólares aunque la
+   * empresa facture en pesos.
+   */
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  perDiemAmount: number | null;
+
+  @Column({ type: 'varchar', length: 3, nullable: true })
+  perDiemCurrency: string | null;
 }

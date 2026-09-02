@@ -44,6 +44,8 @@ export const AUDIT = {
    * el mundo: tiene que poder contestarse quién lo cambió y cuándo.
    */
   SETTINGS_UPDATED: 'settings.updated',
+  /** Reglas del motor de alertas: qué se avisa y con qué umbral. */
+  ALERT_RULES_UPDATED: 'alerts.rules_updated',
   /**
    * Catálogos de negocio. Renombrar o desactivar un tipo de gasto cambia lo que
    * ve toda la operación y, si lleva comportamiento, cómo cierra una rendición.

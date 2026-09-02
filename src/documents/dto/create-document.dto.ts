@@ -17,9 +17,11 @@ export class CreateDocumentDto {
   @IsOptional()
   ownerId?: string;
 
-  @IsEnum(DocumentCategory)
+  // La lista la define cada empresa: la valida el servicio contra su catálogo
+  // (docs/CONFIGURACION.md §5).
+  @IsString()
   @IsNotEmpty()
-  category: DocumentCategory;
+  category: string;
 
   @IsString()
   @IsOptional()

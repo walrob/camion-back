@@ -38,6 +38,7 @@ import { SuperadminModule } from './superadmin/superadmin.module';
 import { AuditLogModule } from './audit-log/audit-log.module';
 import { SettingsModule } from './settings/settings.module';
 import { CatalogsModule } from './catalogs/catalogs.module';
+import { CurrenciesModule } from './currencies/currencies.module';
 import { TenantModule } from './common/tenant/tenant.module';
 import { TenantContextMiddleware } from './common/tenant/tenant-context.middleware';
 
@@ -140,6 +141,8 @@ import { TenantContextMiddleware } from './common/tenant/tenant-context.middlewa
     SettingsModule,
     // Global: los catálogos de negocio (tipos de gasto, de incidente…).
     CatalogsModule,
+    // Global: monedas y cotizaciones para los viajes internacionales.
+    CurrenciesModule,
     SuperadminModule,
   ],
   controllers: [],

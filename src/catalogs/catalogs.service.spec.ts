@@ -134,6 +134,57 @@ describe('CatalogsService', () => {
     expect(balanza?.isActive).toBe(false);
   });
 
+  it('el rol de un puesto de fábrica es el del producto', async () => {
+    expect(await service.rolDePuesto('mechanic')).toBe('maintenance');
+    expect(await service.rolDePuesto('driver')).toBe('driver');
+  });
+
+  it('un puesto propio entra con el rol que le asignaron', async () => {
+    const sistema = CATALOG_BY_KEY.get(CATALOG.EMPLOYEE_POSITION)!.items.map((i) => ({
+      key: i.key,
+      label: i.label,
+    }));
+    await service.save(
+      CATALOG.EMPLOYEE_POSITION,
+      {
+        items: [...sistema, { key: 'playero', label: 'Playero', behavior: 'dispatcher' }],
+      } as any,
+      admin,
+    );
+
+    expect(await service.rolDePuesto('playero')).toBe('dispatcher');
+  });
+
+  it('un puesto propio sin rol entra como chofer, que es el default', async () => {
+    const sistema = CATALOG_BY_KEY.get(CATALOG.EMPLOYEE_POSITION)!.items.map((i) => ({
+      key: i.key,
+      label: i.label,
+    }));
+    await service.save(
+      CATALOG.EMPLOYEE_POSITION,
+      { items: [...sistema, { key: 'sereno', label: 'Sereno' }] } as any,
+      admin,
+    );
+
+    expect(await service.rolDePuesto('sereno')).toBe('driver');
+  });
+
+  it('rechaza un comportamiento que el catálogo no declara', async () => {
+    const sistema = CATALOG_BY_KEY.get(CATALOG.EMPLOYEE_POSITION)!.items.map((i) => ({
+      key: i.key,
+      label: i.label,
+    }));
+    await expect(
+      service.save(
+        CATALOG.EMPLOYEE_POSITION,
+        {
+          items: [...sistema, { key: 'playero', label: 'Playero', behavior: 'superadmin' }],
+        } as any,
+        admin,
+      ),
+    ).rejects.toThrow(BadRequestException);
+  });
+
   it('rechaza un catálogo que no existe', async () => {
     await expect(service.items('lo_que_sea')).rejects.toThrow(BadRequestException);
   });

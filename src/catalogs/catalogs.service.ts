@@ -4,8 +4,10 @@ import { Repository } from 'typeorm';
 import { CatalogItem } from './entities/catalog-item.entity';
 import {
   BEHAVIOR,
+  CATALOG,
   CATALOG_BY_KEY,
   CATALOG_DEFS,
+  CatalogDef,
   esDeSistema,
 } from './catalogs.catalog';
 import { SaveCatalogDto } from './dto/save-catalog.dto';
@@ -82,14 +84,49 @@ export class CatalogsService {
     const salida: Record<string, ElementoDeCatalogo[]> = {};
     for (const def of CATALOG_DEFS) salida[def.key] = await this.items(def.key);
     return {
-      catalogs: CATALOG_DEFS.map(({ key, label, help, usaComportamiento }) => ({
+      catalogs: CATALOG_DEFS.map(({ key, label, help, comportamiento }) => ({
         key,
         label,
         help,
-        usaComportamiento: !!usaComportamiento,
+        // La pantalla dibuja el selector de comportamiento con esto: no conoce
+        // ningún catálogo en particular.
+        comportamiento: comportamiento ?? null,
       })),
       items: salida,
     };
+  }
+
+  /**
+   * Rol de acceso que le corresponde a un puesto.
+   *
+   * Lo usa RRHH al crear el usuario de un empleado. Un puesto propio del cliente
+   * —«Playero», «Encargado de patio»— trae el rol que eligió al crearlo; si no
+   * eligió ninguno, el del catálogo por defecto.
+   */
+  async rolDePuesto(position?: string): Promise<string> {
+    const def = CATALOG_BY_KEY.get(CATALOG.EMPLOYEE_POSITION);
+    const porDefecto = def?.comportamiento?.porDefecto ?? 'driver';
+    if (!position) return porDefecto;
+
+    const items = await this.items(CATALOG.EMPLOYEE_POSITION);
+    return items.find((i) => i.key === position)?.behavior ?? porDefecto;
+  }
+
+  /**
+   * Verifica que una clave exista en el catálogo y esté activa.
+   *
+   * Reemplaza a los `@IsEnum` de los DTOs: la lista dejó de estar en el código.
+   */
+  async assertVigente(catalog: string, key: string, queEs: string): Promise<void> {
+    const item = (await this.items(catalog)).find((i) => i.key === key);
+    if (!item) {
+      throw new BadRequestException(`${queEs} desconocido: ${key}`);
+    }
+    if (!item.isActive) {
+      throw new BadRequestException(
+        `«${item.label}» está desactivado en la configuración de tu empresa.`,
+      );
+    }
   }
 
   /**
@@ -154,11 +191,11 @@ export class CatalogsService {
       fila.icon = item.icon ?? null;
       fila.order = i;
       fila.isActive = item.isActive ?? true;
-      // El comportamiento sólo se acepta en catálogos que lo usan y en
+      // El comportamiento sólo se acepta en catálogos que lo declaran y en
       // elementos propios: el de un elemento de sistema es parte del producto.
       fila.behavior =
-        def.usaComportamiento && !sistema
-          ? this.normalizarComportamiento(item.behavior)
+        def.comportamiento && !sistema
+          ? this.normalizarComportamiento(def, item.behavior)
           : null;
       fila.updatedBy = user.id;
 
@@ -185,9 +222,19 @@ export class CatalogsService {
     return this.items(catalog);
   }
 
-  private normalizarComportamiento(valor?: string): string {
-    if (!valor || valor === BEHAVIOR.EXPENSE) return BEHAVIOR.EXPENSE;
-    if (valor === BEHAVIOR.ADVANCE) return BEHAVIOR.ADVANCE;
-    throw new BadRequestException(`Comportamiento inválido: ${valor}`);
+  /**
+   * El comportamiento tiene que ser uno de los que declara el catálogo. Sin
+   * valor se aplica el por defecto: un tipo de gasto sin marcar suma, y un
+   * puesto sin rol entra como chofer.
+   */
+  private normalizarComportamiento(def: CatalogDef, valor?: string): string {
+    const { porDefecto, opciones } = def.comportamiento!;
+    if (!valor) return porDefecto;
+    if (!opciones.some((o) => o.value === valor)) {
+      throw new BadRequestException(
+        `«${valor}» no es un valor válido para ${def.comportamiento!.label.toLowerCase()}.`,
+      );
+    }
+    return valor;
   }
 }
