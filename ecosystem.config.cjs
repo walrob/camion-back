@@ -1,14 +1,14 @@
 module.exports = {
   apps: [
     {
-      name: 'apiNatu',
+      name: 'apiCamionex',
       script: 'dist/main.js',
-      cwd: '/home/ec2-user/ecommerce-back',
+      cwd: '/home/ec2-user/camionex-back',
       instances: 1,
       autorestart: true,
       watch: false,
       env: {
-        PORT: 5002,
+        PORT: 5006,
         NODE_ENV: 'production',
       },
     },

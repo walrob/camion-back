@@ -5,7 +5,7 @@ services:
     restart: always
     environment:
       MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: db_ecommerce
+      MYSQL_DATABASE: db_camiones
       MYSQL_USER: user_med
       MYSQL_PASSWORD: pass_med
     ports:

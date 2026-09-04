@@ -52,7 +52,7 @@ async function bootstrap() {
 
       const allowed =
         process.env.NODE_ENV === 'production'
-          ? [process.env.FRONTEND_URL].filter(Boolean).includes(origin)
+          ? [process.env.FRONT].filter(Boolean).includes(origin)
           : LAN_ORIGIN.test(origin);
 
       if (allowed) return callback(null, true);

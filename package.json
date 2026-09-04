@@ -1,5 +1,5 @@
 {
-  "name": "back-ecommerce",
+  "name": "back-camionex",
   "version": "0.0.1",
   "description": "",
   "author": "",
@@ -21,7 +21,7 @@
     "schema:log": "npm run typeorm -- schema:log",
     "seed": "cross-env NODE_ENV=development ts-node -r tsconfig-paths/register src/database/seed.ts",
     "seed:bulk": "cross-env NODE_ENV=development ts-node -r tsconfig-paths/register src/database/seed-bulk.ts",
-    "pm2:prod": "pm2 start dist/main.js --name apiNatu --env production",
+    "pm2:prod": "pm2 start dist/main.js --name apiCamionex --env production",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
     "test:watch": "jest --watch",
