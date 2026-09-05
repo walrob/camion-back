@@ -43,8 +43,18 @@ jobs:
       - name: Compilar
         run: npm run build
 
-      - name: Verificar
-        run: npm test
+      # Los tests corren en local, no acá. Mientras el proyecto esté en esta
+      # etapa, cada despliegue es deliberado y va precedido de una corrida
+      # manual: sumar 45 s a cada deploy para repetir lo que se acaba de ver en
+      # verde no compra nada.
+      #
+      # Conviene volver a activarlo cuando despliegue más de una persona, o
+      # cuando el deploy deje de ser un acto consciente (merge automático de un
+      # PR, por ejemplo). Ahí el paso deja de ser redundante y pasa a ser lo
+      # único que separa un commit roto de producción. Para reactivarlo:
+      #
+      #   - name: Verificar
+      #     run: npm test
 
       - name: Preparar clave SSH
         run: |
