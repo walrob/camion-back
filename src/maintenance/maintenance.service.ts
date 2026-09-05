@@ -30,6 +30,7 @@ import {
   money,
   number as num,
 } from 'src/common/pdf/pdf-report.util';
+import { PdfCompanyService } from 'src/common/pdf/pdf-company.service';
 import { LimitsService } from 'src/plans/limits.service';
 import { TenantCronRunner } from 'src/common/tenant/tenant-cron.runner';
 import { AUDIT, AuditLogService } from 'src/audit-log/audit-log.service';
@@ -52,7 +53,10 @@ const ORDER_STATUS_LABELS: Record<string, string> = {
  * Se aparta de la lista general: acá entra el taller —es quien ve que el
  * arreglo no quedó— y no entra el despachante, que no gestiona mantenimiento.
  */
-const ROLES_QUE_REABREN_ORDENES: readonly Role[] = [Role.ADMIN, Role.MAINTENANCE];
+const ROLES_QUE_REABREN_ORDENES: readonly Role[] = [
+  Role.ADMIN,
+  Role.MAINTENANCE,
+];
 
 @Injectable()
 export class MaintenanceService {
@@ -66,6 +70,7 @@ export class MaintenanceService {
     private readonly limitsService: LimitsService,
     private readonly cronRunner: TenantCronRunner,
     private readonly auditLog: AuditLogService,
+    private readonly pdfCompany: PdfCompanyService,
   ) {}
 
   // ───────── Planes ─────────
@@ -73,7 +78,10 @@ export class MaintenanceService {
     dto: CreatePlanDto,
     user: ActiveUserInterface,
   ): Promise<MaintenancePlan> {
-    await this.limitsService.assertCanCreate(user.companyId, 'maintenancePlans');
+    await this.limitsService.assertCanCreate(
+      user.companyId,
+      'maintenancePlans',
+    );
     const truck = await this.trucksService.findOne(dto.truckId);
     const plan = this.plansRepository.create({ ...dto, createdBy: user.id });
     this.applyNextDue(plan, truck);
@@ -96,7 +104,8 @@ export class MaintenanceService {
 
   async findPlan(id: string): Promise<MaintenancePlan> {
     const plan = await this.plansRepository.findOne({ where: { id } });
-    if (!plan) throw new NotFoundException('Plan de mantenimiento no encontrado.');
+    if (!plan)
+      throw new NotFoundException('Plan de mantenimiento no encontrado.');
     return plan;
   }
 
@@ -159,12 +168,17 @@ export class MaintenanceService {
     const done = order.status === MaintenanceOrderStatus.DONE;
 
     const report = new PdfReport({
+      company: await this.pdfCompany.encabezado(),
       title: 'Orden de trabajo',
       docId: order.id.slice(0, 8).toUpperCase(),
       subtitle: truck ? `Unidad ${truck.plate}` : undefined,
       badge: {
         text: ORDER_STATUS_LABELS[order.status] ?? order.status,
-        tone: done ? 'ok' : order.status === MaintenanceOrderStatus.IN_PROGRESS ? 'warn' : 'neutral',
+        tone: done
+          ? 'ok'
+          : order.status === MaintenanceOrderStatus.IN_PROGRESS
+            ? 'warn'
+            : 'neutral',
       },
       dataDateLabel: 'Fecha',
       dataDate: order.date ?? null,
@@ -172,7 +186,10 @@ export class MaintenanceService {
 
     report.section('Datos de la orden', 0).fields([
       { label: 'Fecha', value: dateOnly(order.date) },
-      { label: 'Estado', value: ORDER_STATUS_LABELS[order.status] ?? order.status },
+      {
+        label: 'Estado',
+        value: ORDER_STATUS_LABELS[order.status] ?? order.status,
+      },
       {
         label: 'Odómetro',
         value: order.odometerKm != null ? `${num(order.odometerKm)} km` : '-',
@@ -180,7 +197,9 @@ export class MaintenanceService {
       { label: 'Camión', value: truck?.plate },
       {
         label: 'Marca / Modelo',
-        value: truck ? [truck.brand, truck.model, truck.year].filter(Boolean).join(' ') : '-',
+        value: truck
+          ? [truck.brand, truck.model, truck.year].filter(Boolean).join(' ')
+          : '-',
       },
       { label: 'N° interno', value: truck?.internalNumber },
     ]);
@@ -300,7 +319,9 @@ export class MaintenanceService {
 
   /** Una empresa, con su contexto ya abierto. */
   private async evaluatePlansOfCompany(): Promise<void> {
-    const kmThreshold = await this.alertsService.getThreshold(ALERT_RULE.MAINTENANCE_KM);
+    const kmThreshold = await this.alertsService.getThreshold(
+      ALERT_RULE.MAINTENANCE_KM,
+    );
     const daysThreshold = await this.alertsService.getThreshold(
       ALERT_RULE.MAINTENANCE_DAYS,
     );
@@ -325,7 +346,9 @@ export class MaintenanceService {
   // ───────── Helpers ─────────
   private applyNextDue(plan: MaintenancePlan, truck: Truck) {
     if (plan.triggerType === MaintenanceTriggerType.DATE) {
-      const base = plan.lastServiceAt ? new Date(plan.lastServiceAt) : new Date();
+      const base = plan.lastServiceAt
+        ? new Date(plan.lastServiceAt)
+        : new Date();
       base.setDate(base.getDate() + plan.intervalValue);
       plan.nextDueAt = base.toISOString().slice(0, 10);
     } else if (plan.triggerType === MaintenanceTriggerType.HOURS) {
@@ -351,7 +374,8 @@ export class MaintenanceService {
       return {
         soon: days <= daysThreshold,
         remaining: days,
-        reason: days < 0 ? `venció hace ${-days} días` : `vence en ${days} días`,
+        reason:
+          days < 0 ? `venció hace ${-days} días` : `vence en ${days} días`,
       };
     }
     const current =
@@ -364,7 +388,10 @@ export class MaintenanceService {
     return {
       soon: remaining <= kmThreshold,
       remaining,
-      reason: remaining < 0 ? `pasó por ${-remaining} ${unit}` : `faltan ${remaining} ${unit}`,
+      reason:
+        remaining < 0
+          ? `pasó por ${-remaining} ${unit}`
+          : `faltan ${remaining} ${unit}`,
     };
   }
 

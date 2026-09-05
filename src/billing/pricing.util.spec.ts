@@ -62,7 +62,7 @@ describe('Precio mensual — clientes tipo del modelo comercial', () => {
   it('Cliente D: 80 camiones en Gestión + ERP + IA + API + Premium → $ 2.449.000', () => {
     const addons: AddonFacturable[] = [
       { code: 'erp', name: 'Integración ERP', monthlyPrice: 89000, pricePerVehicle: 0 },
-      { code: 'ia', name: 'FleetLog IA', monthlyPrice: 149000, pricePerVehicle: 1900 },
+      { code: 'ia', name: 'CamioNex IA', monthlyPrice: 149000, pricePerVehicle: 1900 },
       { code: 'api', name: 'API + Webhooks', monthlyPrice: 119000, pricePerVehicle: 0 },
       { code: 'premium', name: 'Soporte Premium', monthlyPrice: 179000, pricePerVehicle: 0 },
     ];

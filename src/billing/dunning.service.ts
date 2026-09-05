@@ -60,7 +60,7 @@ export class DunningService {
    * haciendo un `SELECT` de sus períodos es el tipo de cron que funciona con
    * diez clientes y se cae con mil.
    *
-   * La empresa plataforma queda afuera: FleetLog no se cobra a sí misma.
+   * La empresa plataforma queda afuera: CamioNex no se cobra a sí misma.
    */
   private async morosas(fecha: Date): Promise<Morosa[]> {
     const filas: {

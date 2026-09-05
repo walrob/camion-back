@@ -40,7 +40,7 @@ export class BillingCron {
   private empresasFacturables(): Promise<Company[]> {
     return runAsSystem(() =>
       this.companiesRepository.find({
-        // La empresa plataforma es FleetLog, no un cliente: no se factura.
+        // La empresa plataforma es CamioNex, no un cliente: no se factura.
         where: { status: In(FACTURABLES), isPlatform: false },
       }),
     );

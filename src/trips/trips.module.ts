@@ -15,6 +15,7 @@ import { Trailer } from 'src/fleet/entities/trailer.entity';
 import { Settlement } from 'src/settlements/entities/settlement.entity';
 import { OeaModule } from 'src/oea/oea.module';
 import { DocumentsModule } from 'src/documents/documents.module';
+import { PdfModule } from 'src/common/pdf/pdf.module';
 
 @Module({
   imports: [
@@ -37,6 +38,8 @@ import { DocumentsModule } from 'src/documents/documents.module';
     // viajes, así que no hace falta forwardRef.
     OeaModule,
     DocumentsModule,
+    // Membrete de la hoja de ruta en PDF, con los datos de la empresa.
+    PdfModule,
   ],
   controllers: [TripsController],
   providers: [TripsService],

@@ -131,7 +131,7 @@ describe('Modelo multi-empresa', () => {
       'Invite.token',
       // El token identifica un dispositivo, que no puede estar en dos empresas.
       'DeviceToken.token',
-      // Identificador del pago en Mercado Pago. Es único en MP, no en FleetLog,
+      // Identificador del pago en Mercado Pago. Es único en MP, no en CamioNex,
       // y **tiene que ser global**: es lo que impide acreditar dos veces un
       // aviso repetido (R9.2). Scoparlo por empresa lo volvería inútil, porque
       // cuando llega el aviso todavía no se sabe de qué empresa es el pago.

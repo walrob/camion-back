@@ -14,6 +14,7 @@ import { SequencesService } from 'src/common/sequences/sequences.service';
 import { OeaService } from 'src/oea/oea.service';
 import { DocumentsService } from 'src/documents/documents.service';
 import { SettingsService } from 'src/settings/settings.service';
+import { PdfCompanyService } from 'src/common/pdf/pdf-company.service';
 import { EmploymentStatus } from 'src/common/enums/employmentStatus.enum';
 import { EmploymentMovementType } from 'src/common/enums/employmentMovement.enum';
 
@@ -106,6 +107,8 @@ describe('TripsService: asignación según la situación del legajo', () => {
         { provide: OeaService, useValue: { isConformeForTrip: jest.fn() } },
         { provide: DocumentsService, useValue: { expiredFor: jest.fn() } },
         { provide: SettingsService, useValue: settingsService },
+        // Sólo lo usa la hoja de ruta en PDF, que estos casos no ejercitan.
+        { provide: PdfCompanyService, useValue: { encabezado: jest.fn() } },
       ],
     }).compile();
 

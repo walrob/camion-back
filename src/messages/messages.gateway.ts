@@ -1,9 +1,16 @@
 import { JwtService } from '@nestjs/jwt';
 import { WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
 import { Server } from 'socket.io';
-import { TenantGateway } from 'src/common/tenant/tenant.gateway';
+import {
+  RUTA_SOCKET_IO,
+  TenantGateway,
+} from 'src/common/tenant/tenant.gateway';
 
-@WebSocketGateway({ namespace: '/messages', cors: { origin: '*' } })
+@WebSocketGateway({
+  path: RUTA_SOCKET_IO,
+  namespace: '/messages',
+  cors: { origin: '*' },
+})
 export class MessagesGateway extends TenantGateway {
   @WebSocketServer()
   protected readonly server: Server;

@@ -14,6 +14,7 @@ import {
   dateTime,
   number as num,
 } from 'src/common/pdf/pdf-report.util';
+import { PdfCompanyService } from 'src/common/pdf/pdf-company.service';
 import { Trip } from './entities/trip.entity';
 import { CreateTripDto } from './dto/create-trip.dto';
 import { UpdateTripDto } from './dto/update-trip.dto';
@@ -98,6 +99,7 @@ export class TripsService {
     private readonly oeaService: OeaService,
     private readonly documentsService: DocumentsService,
     private readonly settings: SettingsService,
+    private readonly pdfCompany: PdfCompanyService,
   ) {}
 
   async create(dto: CreateTripDto, user: ActiveUserInterface): Promise<Trip> {
@@ -269,6 +271,7 @@ export class TripsService {
     const trailer = trip.trailer;
 
     const report = new PdfReport({
+      company: await this.pdfCompany.encabezado(),
       title: 'Hoja de ruta',
       docId: trip.code,
       subtitle: `${trip.origin} → ${trip.destination}`,

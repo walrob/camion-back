@@ -1,6 +1,6 @@
 /* eslint-disable no-console */
 /**
- * Seed de datos de prueba para FleetLog (base LOCAL de desarrollo).
+ * Seed de datos de prueba para CamioNex (base LOCAL de desarrollo).
  *
  * Llena la base con datos variados y coherentes para poder recorrer todo el
  * sistema: flotas, camiones, acoplados, empleados (RRHH) con sus usuarios y
@@ -321,24 +321,24 @@ async function run() {
   };
 
   // Staff (no choferes)
-  await createEmployee({ firstName: 'Laura', lastName: 'Gómez', documentId: '20111222', position: EmployeePosition.MANAGER, role: Role.MANAGER, phone: '+54 11 4000-0001', email: 'laura.gomez@fleetlog.com', hireDays: -1200 });
-  const dispatcher = await createEmployee({ firstName: 'Diego', lastName: 'Fernández', documentId: '22333444', position: EmployeePosition.DISPATCHER, role: Role.DISPATCHER, phone: '+54 11 4000-0002', email: 'diego.fernandez@fleetlog.com', hireDays: -900 });
-  await createEmployee({ firstName: 'Sofía', lastName: 'Ramírez', documentId: '25444555', position: EmployeePosition.OTHER, role: Role.HR, phone: '+54 11 4000-0003', email: 'sofia.ramirez@fleetlog.com', hireDays: -800 });
-  await createEmployee({ firstName: 'Jorge', lastName: 'Sosa', documentId: '27555666', position: EmployeePosition.MECHANIC, role: Role.MAINTENANCE, phone: '+54 11 4000-0004', email: 'jorge.sosa@fleetlog.com', hireDays: -700 });
-  await createEmployee({ firstName: 'Marta', lastName: 'Ríos', documentId: '28666777', position: EmployeePosition.OTHER, role: Role.AUDITOR, phone: '+54 11 4000-0005', email: 'marta.rios@fleetlog.com', hireDays: -600 });
-  await createEmployee({ firstName: 'Administrador', lastName: 'General', documentId: '10000001', position: EmployeePosition.ADMIN, role: Role.ADMIN, phone: '+54 11 4000-0000', email: 'admin@fleetlog.com', hireDays: -1500 });
+  await createEmployee({ firstName: 'Laura', lastName: 'Gómez', documentId: '20111222', position: EmployeePosition.MANAGER, role: Role.MANAGER, phone: '+54 11 4000-0001', email: 'laura.gomez@camionex.com.ar', hireDays: -1200 });
+  const dispatcher = await createEmployee({ firstName: 'Diego', lastName: 'Fernández', documentId: '22333444', position: EmployeePosition.DISPATCHER, role: Role.DISPATCHER, phone: '+54 11 4000-0002', email: 'diego.fernandez@camionex.com.ar', hireDays: -900 });
+  await createEmployee({ firstName: 'Sofía', lastName: 'Ramírez', documentId: '25444555', position: EmployeePosition.OTHER, role: Role.HR, phone: '+54 11 4000-0003', email: 'sofia.ramirez@camionex.com.ar', hireDays: -800 });
+  await createEmployee({ firstName: 'Jorge', lastName: 'Sosa', documentId: '27555666', position: EmployeePosition.MECHANIC, role: Role.MAINTENANCE, phone: '+54 11 4000-0004', email: 'jorge.sosa@camionex.com.ar', hireDays: -700 });
+  await createEmployee({ firstName: 'Marta', lastName: 'Ríos', documentId: '28666777', position: EmployeePosition.OTHER, role: Role.AUDITOR, phone: '+54 11 4000-0005', email: 'marta.rios@camionex.com.ar', hireDays: -600 });
+  await createEmployee({ firstName: 'Administrador', lastName: 'General', documentId: '10000001', position: EmployeePosition.ADMIN, role: Role.ADMIN, phone: '+54 11 4000-0000', email: 'admin@camionex.com.ar', hireDays: -1500 });
 
   const dispatcherUserId = dispatcher.userId;
 
   // Choferes: Employee + User + Driver
   const driverRepo = dataSource.getRepository(Driver);
   const driverSeed = [
-    { firstName: 'Carlos', lastName: 'Pereyra', email: 'carlos.pereyra@fleetlog.com', documentId: '30111000', phone: '+54 11 6000-0001', license: 'B-30111000', licenseType: 'E1' },
-    { firstName: 'Miguel', lastName: 'Torres', email: 'miguel.torres@fleetlog.com', documentId: '30222000', phone: '+54 11 6000-0002', license: 'B-30222000', licenseType: 'E1' },
-    { firstName: 'Raúl', lastName: 'Medina', email: 'raul.medina@fleetlog.com', documentId: '30333000', phone: '+54 11 6000-0003', license: 'B-30333000', licenseType: 'E2' },
-    { firstName: 'Andrés', lastName: 'Ledesma', email: 'andres.ledesma@fleetlog.com', documentId: '30444000', phone: '+54 11 6000-0004', license: 'B-30444000', licenseType: 'E1' },
-    { firstName: 'Fernando', lastName: 'Aguirre', email: 'fernando.aguirre@fleetlog.com', documentId: '30555000', phone: '+54 11 6000-0005', license: 'B-30555000', licenseType: 'D1' },
-    { firstName: 'Pablo', lastName: 'Cabrera', email: 'pablo.cabrera@fleetlog.com', documentId: '30666000', phone: '+54 11 6000-0006', license: 'B-30666000', licenseType: 'E2' },
+    { firstName: 'Carlos', lastName: 'Pereyra', email: 'carlos.pereyra@camionex.com.ar', documentId: '30111000', phone: '+54 11 6000-0001', license: 'B-30111000', licenseType: 'E1' },
+    { firstName: 'Miguel', lastName: 'Torres', email: 'miguel.torres@camionex.com.ar', documentId: '30222000', phone: '+54 11 6000-0002', license: 'B-30222000', licenseType: 'E1' },
+    { firstName: 'Raúl', lastName: 'Medina', email: 'raul.medina@camionex.com.ar', documentId: '30333000', phone: '+54 11 6000-0003', license: 'B-30333000', licenseType: 'E2' },
+    { firstName: 'Andrés', lastName: 'Ledesma', email: 'andres.ledesma@camionex.com.ar', documentId: '30444000', phone: '+54 11 6000-0004', license: 'B-30444000', licenseType: 'E1' },
+    { firstName: 'Fernando', lastName: 'Aguirre', email: 'fernando.aguirre@camionex.com.ar', documentId: '30555000', phone: '+54 11 6000-0005', license: 'B-30555000', licenseType: 'D1' },
+    { firstName: 'Pablo', lastName: 'Cabrera', email: 'pablo.cabrera@camionex.com.ar', documentId: '30666000', phone: '+54 11 6000-0006', license: 'B-30666000', licenseType: 'E2' },
   ];
   const drivers: Driver[] = [];
   const driverEmployees: Employee[] = [];
@@ -730,7 +730,7 @@ async function run() {
     position: EmployeePosition.ADMIN,
     role: Role.ADMIN,
     phone: '+54 11 4000-9001',
-    email: 'demo.admin@fleetlog.com',
+    email: 'demo.admin@camionex.com.ar',
     hireDays: -365,
     isDemo: true,
     password: DEMO_PASSWORD,
@@ -745,7 +745,7 @@ async function run() {
     position: EmployeePosition.DRIVER,
     role: Role.DRIVER,
     phone: '+54 11 6000-9002',
-    email: 'demo.chofer@fleetlog.com',
+    email: 'demo.chofer@camionex.com.ar',
     hireDays: -300,
     isDemo: true,
     password: DEMO_PASSWORD,
@@ -860,7 +860,7 @@ async function run() {
     position: EmployeePosition.DRIVER,
     role: Role.DRIVER,
     phone: '+54 11 6000-0007',
-    email: 'ricardo.vega@fleetlog.com',
+    email: 'ricardo.vega@camionex.com.ar',
     hireDays: -1100,
   });
 
@@ -951,12 +951,12 @@ async function run() {
   console.table(counts);
   console.log(
     `\n🔑 Usuarios creados con contraseña: ${PASSWORD}\n` +
-      '   admin@fleetlog.com (admin), laura.gomez@fleetlog.com (manager),\n' +
-      '   diego.fernandez@fleetlog.com (dispatcher), sofia.ramirez@fleetlog.com (hr),\n' +
-      '   jorge.sosa@fleetlog.com (maintenance), marta.rios@fleetlog.com (auditor),\n' +
-      '   choferes: carlos.pereyra@fleetlog.com … pablo.cabrera@fleetlog.com (driver)\n' +
+      '   admin@camionex.com.ar (admin), laura.gomez@camionex.com.ar (manager),\n' +
+      '   diego.fernandez@camionex.com.ar (dispatcher), sofia.ramirez@camionex.com.ar (hr),\n' +
+      '   jorge.sosa@camionex.com.ar (maintenance), marta.rios@camionex.com.ar (auditor),\n' +
+      '   choferes: carlos.pereyra@camionex.com.ar … pablo.cabrera@camionex.com.ar (driver)\n' +
       `\n👀 Cuentas DEMO (solo lectura, para mostrar a clientes) — contraseña: ${DEMO_PASSWORD}\n` +
-      '   demo.admin@fleetlog.com (admin) y demo.chofer@fleetlog.com (driver)\n' +
+      '   demo.admin@camionex.com.ar (admin) y demo.chofer@camionex.com.ar (driver)\n' +
       '   Pueden ver todo y descargar PDFs; no pueden modificar datos.',
   );
 

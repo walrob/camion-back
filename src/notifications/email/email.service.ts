@@ -39,10 +39,10 @@ export class EmailService {
 
     await this.despachar({
       to: email,
-      subject: 'Tu cuenta en FleetLog fue creada',
+      subject: 'Tu cuenta en CamioNex fue creada',
       html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; border: 1px solid #e0e0e0; border-radius: 10px; padding: 24px; background-color: #ffffff;">
-        <h2 style="color: #0b57d0; margin-top: 0;">Bienvenido al FleetLog</h2>
+        <h2 style="color: #0b57d0; margin-top: 0;">Bienvenido a CamioNex</h2>
         <p style="font-size: 16px; color: #333;">
           Se creó una cuenta para vos en el sistema de gestión ERP.
         </p>
@@ -55,7 +55,7 @@ export class EmailService {
           La contraseña te será proporcionada por el administrador del sistema.
         </p>
         <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-        <p style="font-size: 13px; color: #777; margin: 0;">Saludos,<br/><strong>Equipo FleetLog</strong></p>
+        <p style="font-size: 13px; color: #777; margin: 0;">Saludos,<br/><strong>Equipo CamioNex</strong></p>
       </div>`,
     });
   }
@@ -108,7 +108,7 @@ export class EmailService {
           Para aprobarlo o realizar consultas, comuníquese con nosotros respondiendo este correo.
         </p>
         <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-        <p style="font-size: 13px; color: #777; margin: 0;">Saludos,<br/><strong>Equipo FleetLog</strong></p>
+        <p style="font-size: 13px; color: #777; margin: 0;">Saludos,<br/><strong>Equipo CamioNex</strong></p>
       </div>`,
     });
   }
@@ -144,7 +144,7 @@ export class EmailService {
         ${params.cuerpo}
         ${boton}
         <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-        <p style="font-size: 13px; color: #777; margin: 0;">Saludos,<br/><strong>Equipo FleetLog</strong></p>
+        <p style="font-size: 13px; color: #777; margin: 0;">Saludos,<br/><strong>Equipo CamioNex</strong></p>
       </div>`;
   }
 
@@ -169,11 +169,16 @@ export class EmailService {
   /** Se emitió el período del mes. */
   async sendPeriodoEmitido(
     to: string,
-    datos: { periodStart: Date; periodEnd: Date; amount: number; expiration: Date },
+    datos: {
+      periodStart: Date;
+      periodEnd: Date;
+      amount: number;
+      expiration: Date;
+    },
   ) {
     await this.despachar({
       to,
-      subject: `Tu factura de FleetLog — ${this.fecha(datos.periodStart)}`,
+      subject: `Tu factura de CamioNex — ${this.fecha(datos.periodStart)}`,
       html: this.plantilla({
         titulo: 'Se emitió tu período mensual',
         color: '#0b57d0',
@@ -201,7 +206,7 @@ export class EmailService {
   ) {
     await this.despachar({
       to,
-      subject: `Tu factura de FleetLog vence en ${datos.dias} día${datos.dias === 1 ? '' : 's'}`,
+      subject: `Tu factura de CamioNex vence en ${datos.dias} día${datos.dias === 1 ? '' : 's'}`,
       html: this.plantilla({
         titulo: 'Tenés un pago por vencer',
         color: '#b26a00',
@@ -220,10 +225,13 @@ export class EmailService {
   }
 
   /** Se acreditó un pago. */
-  async sendPagoRecibido(to: string, datos: { amount: number; periodStart: Date }) {
+  async sendPagoRecibido(
+    to: string,
+    datos: { amount: number; periodStart: Date },
+  ) {
     await this.despachar({
       to,
-      subject: 'Recibimos tu pago | FleetLog',
+      subject: 'Recibimos tu pago | CamioNex',
       html: this.plantilla({
         titulo: '¡Pago acreditado!',
         color: '#1b7f45',
@@ -247,7 +255,7 @@ export class EmailService {
   ) {
     await this.despachar({
       to,
-      subject: 'Tenés un pago vencido | FleetLog',
+      subject: 'Tenés un pago vencido | CamioNex',
       html: this.plantilla({
         titulo: 'Tu cuenta quedó con un pago vencido',
         color: '#b26a00',
@@ -256,7 +264,7 @@ export class EmailService {
             Hay <strong>${this.importe(datos.amount)}</strong> pendientes de pago.
           </p>
           <p style="font-size: 14px; color: #555;">
-            Podés seguir usando FleetLog con normalidad durante
+            Podés seguir usando CamioNex con normalidad durante
             <strong>${datos.diasDeGracia} días</strong>. Si no llegamos a
             registrar el pago antes del
             <strong>${this.fecha(datos.bloqueaEl)}</strong>, la cuenta pasa a
@@ -272,7 +280,7 @@ export class EmailService {
   async sendCuentaBloqueada(to: string, datos: { amount: number }) {
     await this.despachar({
       to,
-      subject: 'Tu cuenta de FleetLog pasó a solo lectura',
+      subject: 'Tu cuenta de CamioNex pasó a solo lectura',
       html: this.plantilla({
         titulo: 'Cuenta suspendida por falta de pago',
         color: '#b3261e',
@@ -293,10 +301,13 @@ export class EmailService {
   }
 
   /** Faltan 7, 3 o 1 días para que termine la prueba gratuita. */
-  async sendTrialPorVencer(to: string, datos: { dias: number; terminaEl: Date }) {
+  async sendTrialPorVencer(
+    to: string,
+    datos: { dias: number; terminaEl: Date },
+  ) {
     await this.despachar({
       to,
-      subject: `Te quedan ${datos.dias} día${datos.dias === 1 ? '' : 's'} de prueba en FleetLog`,
+      subject: `Te quedan ${datos.dias} día${datos.dias === 1 ? '' : 's'} de prueba en CamioNex`,
       html: this.plantilla({
         titulo: `Tu prueba termina el ${this.fecha(datos.terminaEl)}`,
         color: '#0b57d0',
@@ -339,7 +350,7 @@ export class EmailService {
 
     await this.despachar({
       to,
-      subject: `[FleetLog] ${empresas.length} cuenta(s) por bloquearse mañana`,
+      subject: `[CamioNex] ${empresas.length} cuenta(s) por bloquearse mañana`,
       html: this.plantilla({
         titulo: 'Cuentas a un día del bloqueo',
         color: '#b3261e',
@@ -369,12 +380,12 @@ export class EmailService {
 
     await this.despachar({
       to: email,
-      subject: 'Restablecé tu contraseña | FleetLog',
+      subject: 'Restablecé tu contraseña | CamioNex',
       html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; border: 1px solid #e0e0e0; border-radius: 10px; padding: 24px; background-color: #ffffff;">
         <h2 style="color: #0b57d0; margin-top: 0;">Restablecer contraseña</h2>
         <p style="font-size: 16px; color: #333;">
-          Recibimos una solicitud para restablecer la contraseña de tu cuenta en el FleetLog.
+          Recibimos una solicitud para restablecer la contraseña de tu cuenta en CamioNex.
         </p>
         <p style="margin: 24px 0;">
           <a href="${resetLink}" style="background-color: #0b57d0; color: #ffffff; padding: 12px 20px; border-radius: 6px; text-decoration: none; font-weight: bold;">
@@ -383,7 +394,7 @@ export class EmailService {
         </p>
         <p style="font-size: 14px; color: #555;">Si no solicitaste este cambio, podés ignorar este correo.</p>
         <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-        <p style="font-size: 13px; color: #777; margin: 0;">Saludos,<br/><strong>Equipo FleetLog</strong></p>
+        <p style="font-size: 13px; color: #777; margin: 0;">Saludos,<br/><strong>Equipo CamioNex</strong></p>
       </div>`,
     });
   }
@@ -404,13 +415,13 @@ export class EmailService {
 
     await this.despachar({
       to,
-      subject: 'Confirmá tu correo | FleetLog',
+      subject: 'Confirmá tu correo | CamioNex',
       html: this.plantilla({
         titulo: 'Confirmá tu correo para empezar',
         color: '#0b57d0',
         cuerpo: `
           <p style="font-size: 16px; color: #333;">
-            ${datos.nombre ? `Hola ${datos.nombre}: ` : ''}tu cuenta de FleetLog
+            ${datos.nombre ? `Hola ${datos.nombre}: ` : ''}tu cuenta de CamioNex
             ya está creada. Falta un solo paso.
           </p>
           <p style="font-size: 14px; color: #555;">
@@ -426,9 +437,9 @@ export class EmailService {
   /**
    * Invitación a sumarse a una empresa ya existente.
    *
-   * El asunto nombra a la empresa y no a FleetLog: quien lo recibe conoce a su
+   * El asunto nombra a la empresa y no a CamioNex: quien lo recibe conoce a su
    * empleador, no necesariamente al proveedor de software, y un asunto que sólo
-   * dice "FleetLog" se lee como publicidad y se borra.
+   * dice "CamioNex" se lee como publicidad y se borra.
    */
   async sendInvitacion(
     to: string,
@@ -444,14 +455,14 @@ export class EmailService {
 
     await this.despachar({
       to,
-      subject: `${datos.empresa} te invitó a FleetLog`,
+      subject: `${datos.empresa} te invitó a CamioNex`,
       html: this.plantilla({
         titulo: `Te sumaron a ${datos.empresa}`,
         color: '#0b57d0',
         cuerpo: `
           <p style="font-size: 16px; color: #333;">
             ${datos.invitadoPor ? `${datos.invitadoPor} te` : 'Te'} invitó a
-            usar FleetLog con <strong>${datos.empresa}</strong>, con el perfil
+            usar CamioNex con <strong>${datos.empresa}</strong>, con el perfil
             de <strong>${datos.rol}</strong>.
           </p>
           <p style="font-size: 14px; color: #555;">

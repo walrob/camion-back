@@ -1,6 +1,6 @@
 /* eslint-disable no-console */
 /**
- * Seed MASIVO para FleetLog (base LOCAL de desarrollo).
+ * Seed MASIVO para CamioNex (base LOCAL de desarrollo).
  *
  * A diferencia de `seed.ts`, este script es ADITIVO y RE-EJECUTABLE: no borra
  * nada y no choca con datos existentes porque prefija todos los identificadores
@@ -233,7 +233,7 @@ async function run() {
       const first = FIRST_NAMES[i % FIRST_NAMES.length];
       const last = LAST_NAMES[(i * 7) % LAST_NAMES.length];
       return {
-        email: `chofer.${TAG}.${i}@fleetlog.com`.toLowerCase(),
+        email: `chofer.${TAG}.${i}@camionex.com.ar`.toLowerCase(),
         name: `${first} ${last}`,
         password: passwordHash,
         phone: `+54 11 7${pad(i, 3)}-${pad(randInt(1000, 9999))}`,
@@ -609,7 +609,7 @@ async function run() {
     alertas: await alertRepo.count(),
   });
   console.log(`\n➕ Agregado en esta corrida (tag ${TAG}): ${N.trucks} camiones, ${N.drivers} choferes, ${N.trailers} acoplados, ${trips.length} viajes.`);
-  console.log(`🔑 Nuevos usuarios con contraseña: ${PASSWORD}  (emails: chofer.${TAG}.0..${N.drivers - 1}@fleetlog.com)`);
+  console.log(`🔑 Nuevos usuarios con contraseña: ${PASSWORD}  (emails: chofer.${TAG}.0..${N.drivers - 1}@camionex.com.ar)`);
 
   await dataSource.destroy();
 }

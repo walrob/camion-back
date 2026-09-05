@@ -10,7 +10,7 @@ import { Company } from 'src/companies/entities/company.entity';
 /**
  * Crea un usuario administrador por defecto la primera vez que arranca la app,
  * solo si la tabla de usuarios está vacía. Las credenciales se toman de las
- * variables de entorno (SEED_ADMIN_*) con valores por defecto para desarrollo.
+ * variables de entorno (SEED_ADMIN_*); si no están, no se crea nada.
  */
 @Injectable()
 export class UsersSeeder implements OnApplicationBootstrap {
@@ -49,9 +49,26 @@ export class UsersSeeder implements OnApplicationBootstrap {
     });
     if (count > 0) return;
 
-    const email = this.configService.get<string>('SEED_ADMIN_EMAIL') ?? 'admin@fleetlog.com';
-    const password = this.configService.get<string>('SEED_ADMIN_PASSWORD') ?? 'Admin1234';
-    const name = this.configService.get<string>('SEED_ADMIN_NAME') ?? 'Administrador';
+    // Sin valores por defecto, a propósito. Antes, si faltaban las variables
+    // se creaba `admin@fleetlog.com` con la contraseña `Admin1234`: una
+    // credencial publicada en el repositorio, con rol de administrador, sobre
+    // la primera empresa de una base recién migrada. Es preferible quedarse
+    // sin administrador inicial —que se nota en el primer intento de ingreso
+    // y se arregla definiendo las variables— que tener uno que cualquiera
+    // puede usar y que no se nota nunca.
+    const email = this.configService.get<string>('SEED_ADMIN_EMAIL');
+    const password = this.configService.get<string>('SEED_ADMIN_PASSWORD');
+
+    if (!email || !password) {
+      this.logger.warn(
+        'Sin SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD: no se creó el ' +
+          'administrador inicial. Definilas y reiniciá, o creá el usuario a mano.',
+      );
+      return;
+    }
+
+    const name =
+      this.configService.get<string>('SEED_ADMIN_NAME') ?? 'Administrador';
 
     await this.usersRepository.save({
       email,

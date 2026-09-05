@@ -1,4 +1,3 @@
-import * as fs from 'fs';
 // pdfkit exporta por CommonJS y el proyecto compila sin esModuleInterop: con
 // `import ... from` el default queda undefined en runtime.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -45,18 +44,30 @@ const PAGE = {
 const TZ = 'America/Argentina/Buenos_Aires';
 
 /**
- * Datos de la empresa para el encabezado. Vienen de variables de entorno para
- * no hardcodear el cliente; el logo se agrega apoyando un archivo en
- * COMPANY_LOGO_PATH (png/jpg). Mientras no exista, se dibuja un placeholder con
- * las iniciales, así el diseño ya reserva el espacio definitivo.
+ * Membrete del comprobante: los datos de la empresa que lo emite.
+ *
+ * Los provee `PdfCompanyService` leyendo la empresa del usuario. Antes salían
+ * de variables de entorno, que describen una instalación y no un cliente: con
+ * varias empresas en el mismo servidor, todas recibían el membrete de la
+ * primera que se hubiera configurado.
+ *
+ * Es obligatorio y no tiene valor por defecto a propósito. Un default acá
+ * volvería a producir el mismo error, pero silencioso: el PDF saldría bien,
+ * con el nombre de otro.
  */
-const company = () => ({
-  name: process.env.COMPANY_NAME || 'FleetLog',
-  taxId: process.env.COMPANY_TAX_ID || '',
-  address: process.env.COMPANY_ADDRESS || '',
-  contact: process.env.COMPANY_CONTACT || '',
-  logoPath: process.env.COMPANY_LOGO_PATH || '',
-});
+export interface PdfCompany {
+  name: string;
+  /** Ya formateado para imprimir ("CUIT 30-…"); vacío si no hay dato. */
+  taxId: string;
+  address: string;
+  contact: string;
+  /**
+   * Logo ya descargado. Se recibe el contenido y no una ruta ni una URL:
+   * este archivo dibuja, no sabe de S3 ni del disco. Sin logo se dibuja un
+   * recuadro con las iniciales, que ocupa exactamente el mismo espacio.
+   */
+  logo?: Buffer;
+}
 
 // ── Formateadores ───────────────────────────────────────────────────────────
 
@@ -159,6 +170,8 @@ export const dateTime = (value?: Date | string | null): string => {
 // ── Tipos públicos ──────────────────────────────────────────────────────────
 
 export interface PdfMeta {
+  /** Empresa que emite el comprobante. Ver `PdfCompany`. */
+  company: PdfCompany;
   /** Título del comprobante ("Liquidación de viaje"). */
   title: string;
   /** Identificador del comprobante (código de viaje, nro. de liquidación). */
@@ -216,7 +229,7 @@ export class PdfReport {
       bufferPages: true, // necesario para numerar "Página X de Y" al cerrar
       info: {
         Title: sanitize(meta.title),
-        Author: company().name,
+        Author: meta.company.name,
         Subject: sanitize(meta.subtitle || meta.docId || meta.title),
         CreationDate: this.generatedAt,
       },
@@ -245,7 +258,7 @@ export class PdfReport {
 
   private drawHeader(): void {
     const { doc } = this;
-    const co = company();
+    const co = this.meta.company;
     const left = PAGE.margins.left;
     const right = doc.page.width - PAGE.margins.right;
     const top = PAGE.headerTop;
@@ -318,13 +331,13 @@ export class PdfReport {
 
   private drawLogo(x: number, y: number): void {
     const { doc } = this;
-    const co = company();
+    const co = this.meta.company;
     const w = 92;
     const h = 46;
 
-    if (co.logoPath && fs.existsSync(co.logoPath)) {
+    if (co.logo) {
       try {
-        doc.image(co.logoPath, x, y, { fit: [w, h] });
+        doc.image(co.logo, x, y, { fit: [w, h] });
         return;
       } catch {
         // Si el archivo no es una imagen válida, cae al placeholder.
@@ -347,7 +360,7 @@ export class PdfReport {
       .stroke();
     doc.undash();
     doc.font(FONT.bold).fontSize(16).fillColor(COLOR.primary);
-    doc.text(initials || 'FL', x, y + h / 2 - 9, { width: w, align: 'center' });
+    doc.text(initials || 'CX', x, y + h / 2 - 9, { width: w, align: 'center' });
     doc.restore();
   }
 
@@ -366,7 +379,11 @@ export class PdfReport {
     const w = doc.widthOfString(text) + 11;
     const x = boxX + boxW - w;
     const y = doc.y + 3;
-    doc.roundedRect(x, y, w, h, h / 2).lineWidth(0.7).strokeColor(tone).stroke();
+    doc
+      .roundedRect(x, y, w, h, h / 2)
+      .lineWidth(0.7)
+      .strokeColor(tone)
+      .stroke();
     doc.fillColor(tone).text(text, x, y + 3, { width: w, align: 'center' });
     doc.y = y + h + 2;
   }
@@ -374,7 +391,7 @@ export class PdfReport {
   private drawFooters(): void {
     const { doc } = this;
     const range = doc.bufferedPageRange();
-    const co = company();
+    const co = this.meta.company;
 
     for (let i = 0; i < range.count; i++) {
       doc.switchToPage(range.start + i);

@@ -53,7 +53,7 @@ export class Company {
   slug: string;
 
   /**
-   * Empresa que representa a FleetLog, no a un cliente.
+   * Empresa que representa a CamioNex, no a un cliente.
    *
    * Existe para que el superadmin tenga una empresa a la que pertenecer y así
    * `user.companyId` pueda seguir siendo NOT NULL. Debilitar esa invariante
@@ -162,7 +162,7 @@ export class Company {
   /**
    * Suscripción recurrente de Mercado Pago. NULL = la empresa paga a mano.
    *
-   * FleetLog cobra con **una sola cuenta de MP** (la propia), no con
+   * CamioNex cobra con **una sola cuenta de MP** (la propia), no con
    * marketplace: acá no hay un vendedor por tenant al que haya que vincularle
    * su cuenta, así que no hacen falta tokens por empresa ni OAuth.
    */

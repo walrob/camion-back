@@ -21,18 +21,18 @@ describe('MpPaymentsService: URL de avisos', () => {
     return (servicio as unknown as { urlDeAvisos: string }).urlDeAvisos;
   };
 
-  const ESPERADA = 'https://api.fleetlog.com.ar/api/v1/webhooks/mercadopago';
+  const ESPERADA = 'https://api.camionex.com.ar/api/v1/webhooks/mercadopago';
 
   it('acepta BACK_URL con el prefijo de la API incluido (formato Aturna)', () => {
-    expect(urlCon('https://api.fleetlog.com.ar/api/v1/')).toBe(ESPERADA);
+    expect(urlCon('https://api.camionex.com.ar/api/v1/')).toBe(ESPERADA);
   });
 
   it('acepta BACK_URL sin el prefijo', () => {
-    expect(urlCon('https://api.fleetlog.com.ar')).toBe(ESPERADA);
+    expect(urlCon('https://api.camionex.com.ar')).toBe(ESPERADA);
   });
 
   it('no duplica el prefijo ni deja barras de más', () => {
-    expect(urlCon('https://api.fleetlog.com.ar/api/v1')).toBe(ESPERADA);
-    expect(urlCon('https://api.fleetlog.com.ar///')).toBe(ESPERADA);
+    expect(urlCon('https://api.camionex.com.ar/api/v1')).toBe(ESPERADA);
+    expect(urlCon('https://api.camionex.com.ar///')).toBe(ESPERADA);
   });
 });

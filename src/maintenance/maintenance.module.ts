@@ -7,6 +7,7 @@ import { MaintenanceController } from './maintenance.controller';
 import { AuthModule } from 'src/auth/auth.module';
 import { FleetModule } from 'src/fleet/fleet.module';
 import { AlertsModule } from 'src/alerts/alerts.module';
+import { PdfModule } from 'src/common/pdf/pdf.module';
 
 @Module({
   imports: [
@@ -14,6 +15,8 @@ import { AlertsModule } from 'src/alerts/alerts.module';
     forwardRef(() => AuthModule),
     FleetModule,
     AlertsModule,
+    // Membrete de la orden de trabajo en PDF, con los datos de la empresa.
+    PdfModule,
   ],
   controllers: [MaintenanceController],
   providers: [MaintenanceService],

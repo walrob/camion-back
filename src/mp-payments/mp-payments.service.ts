@@ -48,7 +48,7 @@ const ER_DUP_ENTRY = 'ER_DUP_ENTRY';
  * Marketplace: cada institución cobra a sus pacientes con su propia cuenta, y
  * por eso necesita OAuth, un token por institución, refresco de tokens y
  * resolver con qué credencial consultar cada pago. Acá pasa lo contrario:
- * **FleetLog le cobra a la empresa**, siempre con la misma cuenta. No hay
+ * **CamioNex le cobra a la empresa**, siempre con la misma cuenta. No hay
  * vinculación de cuentas, no hay tokens por empresa y no hay `mp-auth/`.
  *
  * Dos formas de cobrar:
@@ -166,7 +166,7 @@ export class MpPaymentsService {
         items: [
           {
             id: sub.id,
-            title: `FleetLog — período ${this.fecha(sub.periodStart)} a ${this.fecha(sub.periodEnd)}`,
+            title: `CamioNex — período ${this.fecha(sub.periodStart)} a ${this.fecha(sub.periodEnd)}`,
             quantity: 1,
             unit_price: importe,
             currency_id: 'ARS',
@@ -271,7 +271,7 @@ export class MpPaymentsService {
     inicio.setDate(inicio.getDate() + 1);
 
     const cuerpo = {
-      reason: 'Suscripción mensual a FleetLog',
+      reason: 'Suscripción mensual a CamioNex',
       auto_recurring: {
         frequency: 1,
         frequency_type: 'months',
@@ -291,9 +291,7 @@ export class MpPaymentsService {
     };
 
     const respuesta = await this.mp().preapproval.create({
-      body: cuerpo as unknown as Parameters<
-        PreApproval['create']
-      >[0]['body'],
+      body: cuerpo as unknown as Parameters<PreApproval['create']>[0]['body'],
     });
 
     await runAsSystem(() =>
@@ -364,7 +362,7 @@ export class MpPaymentsService {
   /**
    * Pone al día el importe del débito de cada empresa.
    *
-   * Hace falta porque el precio de FleetLog **no es fijo**: depende de cuántas
+   * Hace falta porque el precio de CamioNex **no es fijo**: depende de cuántas
    * unidades tenga la flota ese mes. Una suscripción de MP creada en marzo
    * seguiría debitando el importe de marzo para siempre, y la diferencia con lo
    * facturado quedaría impaga sin que nadie se entere. MP aplica el monto nuevo
@@ -472,7 +470,9 @@ export class MpPaymentsService {
             companyId,
             subscriptionId: subscription.id,
             paidAt: this.soloFecha(
-              mpPago.date_approved ? new Date(mpPago.date_approved) : new Date(),
+              mpPago.date_approved
+                ? new Date(mpPago.date_approved)
+                : new Date(),
             ) as unknown as Date,
             amount: importe,
             method: PaymentMethod.MERCADOPAGO,
@@ -488,7 +488,10 @@ export class MpPaymentsService {
         // Sólo acredita lo aprobado, y sólo si alcanza para el período. Un pago
         // parcial queda registrado —para poder explicárselo al cliente— pero no
         // cancela la deuda ni levanta el bloqueo.
-        if (estado === PaymentStatusMp.PAID && importe + 0.01 >= Number(subscription.amount)) {
+        if (
+          estado === PaymentStatusMp.PAID &&
+          importe + 0.01 >= Number(subscription.amount)
+        ) {
           await this.billing.marcarPagada(subscription.id);
           acreditado = true;
         }
@@ -531,7 +534,7 @@ export class MpPaymentsService {
    * Actualiza el estado del débito automático a partir de un aviso.
    *
    * Importa porque el cliente puede pausar o cancelar la suscripción desde su
-   * propia cuenta de MP, sin pasar por FleetLog. Si no se escuchara este aviso,
+   * propia cuenta de MP, sin pasar por CamioNex. Si no se escuchara este aviso,
    * la empresa figuraría con cobro automático activo hasta que alguien notara
    * que hace tres meses que no entra plata.
    */
@@ -587,11 +590,10 @@ export class MpPaymentsService {
   ): Promise<string> {
     if (indicado) return indicado;
 
-    const [usuario]: { email: string }[] =
-      await this.companiesRepository.query(
-        'SELECT `email` FROM `user` WHERE `id` = ? LIMIT 1',
-        [usuarioId],
-      );
+    const [usuario]: { email: string }[] = await this.companiesRepository.query(
+      'SELECT `email` FROM `user` WHERE `id` = ? LIMIT 1',
+      [usuarioId],
+    );
     if (usuario?.email) return usuario.email;
 
     const company = await runAsSystem(() =>

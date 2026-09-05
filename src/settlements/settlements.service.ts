@@ -23,6 +23,7 @@ import {
   money,
   number as num,
 } from 'src/common/pdf/pdf-report.util';
+import { PdfCompanyService } from 'src/common/pdf/pdf-company.service';
 import { TripLogType } from 'src/common/enums/tripLogType.enum';
 import { TripStatus } from 'src/common/enums/tripStatus.enum';
 import { Role } from 'src/common/enums/role.enum';
@@ -96,6 +97,7 @@ export class SettlementsService {
     private readonly settings: SettingsService,
     private readonly catalogsService: CatalogsService,
     private readonly currenciesService: CurrenciesService,
+    private readonly pdfCompany: PdfCompanyService,
   ) {}
 
   /**
@@ -436,6 +438,7 @@ export class SettlementsService {
     const advances = sorted.filter((e) => adelantos.has(e.type));
 
     const report = new PdfReport({
+      company: await this.pdfCompany.encabezado(),
       title: 'Liquidación de viaje',
       docId: trip.code,
       subtitle: `${trip.origin} → ${trip.destination}`,

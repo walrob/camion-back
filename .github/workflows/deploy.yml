@@ -1,0 +1,92 @@
+# Despliegue del backend de CamioNex al EC2 compartido.
+#
+# El EC2 hospeda además Aturna, Aturna Vet y Supernatu. Todo lo que hay acá está
+# escrito para tocar únicamente lo de CamioNex: el proceso de PM2 se nombra
+# siempre de forma explícita y el rsync se limita a la carpeta del proyecto.
+name: Deploy backend
+
+on:
+  # Sólo `main`. La rama de trabajo es `dev`, así que un push ahí no despliega:
+  # a producción se llega por merge, que es donde se decide qué entra.
+  push:
+    branches: [main]
+  # Para redesplegar sin un commit nuevo (por ejemplo, tras cambiar el .env del
+  # servidor).
+  workflow_dispatch:
+
+# Dos despliegues simultáneos dejarían el servidor a mitad de camino entre dos
+# versiones. El segundo espera al primero en vez de pisarlo.
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # `npm ci` y no `npm install`: instala exactamente lo del package-lock y
+      # falla si están desincronizados, en vez de resolver versiones nuevas en
+      # silencio el día del despliegue.
+      - name: Instalar dependencias
+        run: npm ci
+
+      # Compilar acá y no en el servidor. Si el build falla, falla el workflow y
+      # el EC2 no se toca: la versión que está andando sigue andando.
+      - name: Compilar
+        run: npm run build
+
+      - name: Verificar
+        run: npm test
+
+      - name: Preparar clave SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
+
+      # Sin --delete. El destino tiene cosas que no están en el repositorio y no
+      # deben borrarse: el .env.production y el node_modules ya instalado.
+      # Un --delete acá es la forma más rápida de dejar la aplicación sin
+      # configuración y sin dependencias.
+      - name: Copiar build al EC2
+        run: |
+          rsync -az --checksum \
+            -e "ssh -i ~/.ssh/id_deploy" \
+            dist package.json package-lock.json ecosystem.config.cjs \
+            "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/home/ec2-user/camionex-back/"
+
+      # `--omit=dev` en el servidor: las dependencias nativas (sharp, bcryptjs)
+      # traen binarios por plataforma, así que no se pueden copiar desde el
+      # runner de Actions ni desde una máquina Windows.
+      #
+      # `pm2 reload camionex-back` nombra el proceso de forma explícita. Nunca
+      # `restart all` ni `delete all`: eso reiniciaría también Aturna, Aturna Vet
+      # y Supernatu. Si el proceso todavía no existe, se crea a partir del
+      # ecosystem y se persiste con `pm2 save`.
+      - name: Instalar dependencias y recargar PM2
+        run: |
+          ssh -i ~/.ssh/id_deploy \
+            "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" \
+            'set -e
+             cd /home/ec2-user/camionex-back
+             npm ci --omit=dev
+             pm2 reload camionex-back --update-env || pm2 start ecosystem.config.cjs
+             pm2 save'
+
+      # Si la app no responde, el paso falla y queda registrado en el workflow.
+      # No hay rollback automático a propósito: con PM2 el proceso viejo ya se
+      # reemplazó, y volver atrás solo es una decisión, no un automatismo.
+      - name: Comprobar que responde
+        run: |
+          ssh -i ~/.ssh/id_deploy \
+            "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" \
+            'sleep 8 && curl -fsS -o /dev/null -w "%{http_code}\n" http://127.0.0.1:5006/api/v1/plans/public'
