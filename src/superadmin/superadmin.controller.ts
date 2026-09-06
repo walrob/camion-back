@@ -274,31 +274,6 @@ export class SuperadminController {
     return sub ?? { message: 'El período ya estaba emitido.' };
   }
 
-  @Post('companies/:id/billing/:subscriptionId/paid')
-  @ApiOperation({ summary: 'Registra el cobro de un período.' })
-  async marcarPagada(
-    @Param('id') id: string,
-    @Param('subscriptionId') subscriptionId: string,
-    @ActiveUser() user: ActiveUserInterface,
-    @Req() req: Request,
-  ) {
-    const sub = await this.superadmin.marcarPagada(id, subscriptionId);
-
-    await this.auditLog.registrar(
-      user,
-      {
-        action: AUDIT.BILLING_PAYMENT_REGISTERED,
-        companyId: id,
-        entityType: 'subscription',
-        entityId: subscriptionId,
-        metadata: { amount: sub.amount },
-      },
-      req as never,
-    );
-
-    return sub;
-  }
-
   // ── Catálogo ─────────────────────────────────────────────────────────────
 
   @Patch('plans/:code')

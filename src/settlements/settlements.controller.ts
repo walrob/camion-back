@@ -7,7 +7,10 @@ import {
   ParseIntPipe,
   Post,
   Query,
+  Res,
+  StreamableFile,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { SettlementsService } from './settlements.service';
 import { SettlementStatus } from 'src/common/enums/settlementStatus.enum';
@@ -82,10 +85,24 @@ export class SettlementsController {
     return this.settlementsService.findOne(id);
   }
 
+  /**
+   * Devuelve el comprobante en PDF. Manda el archivo —como la hoja de ruta y
+   * la orden de taller— y no una URL firmada de S3: el PDF se rehace con los
+   * datos de la liquidación, así que no tiene por qué dejar de salir cuando el
+   * bucket no responde.
+   */
   @Get(':id/pdf')
   @Auth(Role.ADMIN, Role.MANAGER, Role.AUDITOR)
-  pdf(@Param('id') id: string) {
-    return this.settlementsService.getPdfUrl(id);
+  async pdf(
+    @Param('id') id: string,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    const { buffer, filename } = await this.settlementsService.pdfBuffer(id);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${filename}"`,
+    });
+    return new StreamableFile(buffer);
   }
 
   @Post(':id/close')

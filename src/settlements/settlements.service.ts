@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -83,8 +84,14 @@ const typeLabel = (type: string): string => TYPE_LABELS[type] ?? type;
 /** Totales que devuelve `TripLogService.summary`, para tipar el armado del PDF. */
 type TripSummary = Awaited<ReturnType<TripLogService['summary']>>;
 
+/** Texto de un error para el log, venga como `Error` o como lo que sea. */
+const mensajeDeError = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
 @Injectable()
 export class SettlementsService {
+  private readonly logger = new Logger(SettlementsService.name);
+
   constructor(
     @InjectRepository(Settlement)
     private readonly settlementsRepository: Repository<Settlement>,
@@ -176,7 +183,9 @@ export class SettlementsService {
     settlement.totalAdvances = summary.totalAdvances;
     settlement.netToSettle = summary.netToSettle;
 
-    // Generar PDF y subirlo a S3.
+    // El PDF se archiva en S3, pero la liquidación no depende de eso: si el
+    // bucket no responde queda sin `pdfKey` y el comprobante se regenera
+    // cuando se lo pida (ver `subirPdf`).
     const entries = await this.tripLogService.listByTrip(tripId);
     settlement.pdfKey = await this.uploadPdf(trip, summary, entries, settlement);
 
@@ -362,44 +371,97 @@ export class SettlementsService {
   }
 
   /**
-   * URL firmada del PDF. Si la liquidación todavía no tiene uno —las creadas
-   * antes de que `generate` lo armara, o las cargadas por el seed— se genera en
-   * el momento y se guarda, en vez de rechazar el pedido: el PDF es un derivado
-   * de datos que ya están en la liquidación, así que siempre se puede rehacer.
-   * Vale también para las cerradas, donde recalcular está bloqueado.
+   * El PDF de la liquidación, listo para descargar.
+   *
+   * Se sirve el archivo y no una URL firmada de S3: el comprobante es un
+   * derivado de datos que ya están en la base, así que siempre se puede
+   * rehacer, y hacerlo depender del bucket significaba que una caída de S3
+   * —o simplemente trabajar sin internet— dejara sin comprobante a quien lo
+   * pide. Es además lo que ya hacen la hoja de ruta y la orden de taller.
+   *
+   * Si hay copia archivada en S3 se devuelve esa —es el documento que quedó
+   * al cerrar—; si el bucket no responde, se regenera al vuelo.
    */
-  async getPdfUrl(id: string): Promise<{ url: string }> {
-    let settlement = await this.findOne(id);
-    if (!settlement.pdfKey) {
-      settlement = await this.buildAndStorePdf(settlement);
-    }
-    const url = await this.storageService.getPresignedUrl(settlement.pdfKey, 300);
-    return { url };
-  }
-
-  /** Arma el PDF de una liquidación existente, lo sube y persiste su `pdfKey`. */
-  private async buildAndStorePdf(settlement: Settlement): Promise<Settlement> {
+  async pdfBuffer(id: string): Promise<{ buffer: Buffer; filename: string }> {
+    const settlement = await this.findOne(id);
     const trip = await this.tripsService.findOne(settlement.tripId);
+    const filename = `liquidacion-${trip.code}.pdf`;
+
+    const archivado = await this.pdfArchivado(settlement);
+    if (archivado) return { buffer: archivado, filename };
+
     const summary = await this.tripLogService.summary(settlement.tripId);
     const entries = await this.tripLogService.listByTrip(settlement.tripId);
-    settlement.pdfKey = await this.uploadPdf(trip, summary, entries, settlement);
-    return this.settlementsRepository.save(settlement);
+    const buffer = await this.buildPdf(trip, summary, entries, settlement);
+
+    // Aprovecha el pedido para archivar lo que no se pudo archivar antes. Es
+    // best-effort: si vuelve a fallar, el comprobante ya está armado y sale
+    // igual.
+    if (!settlement.pdfKey) {
+      const key = await this.subirPdf(buffer, trip.code);
+      if (key) {
+        settlement.pdfKey = key;
+        await this.settlementsRepository.save(settlement);
+      }
+    }
+
+    return { buffer, filename };
   }
 
-  /** Genera el PDF de un viaje y lo sube a S3; devuelve la key. */
+  /** Copia archivada en S3, o `null` si no hay o si el bucket no responde. */
+  private async pdfArchivado(settlement: Settlement): Promise<Buffer | null> {
+    if (!settlement.pdfKey) return null;
+    try {
+      return await this.storageService.getFileBuffer(settlement.pdfKey);
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo bajar el PDF archivado de la liquidación ${settlement.id} ` +
+          `(${settlement.pdfKey}): ${mensajeDeError(error)}. Se regenera al vuelo.`,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Archiva el PDF en S3 y devuelve la key, o `null` si el bucket no responde.
+   *
+   * Deliberadamente no propaga el error: la copia en S3 es un extra sobre la
+   * liquidación —los datos del comprobante están en la base—, así que perder
+   * el archivado no puede tumbar el cálculo de una rendición ni la descarga
+   * del PDF. Sin `pdfKey` la liquidación queda igual de completa y el próximo
+   * pedido del comprobante reintenta la subida.
+   */
+  private async subirPdf(
+    buffer: Buffer,
+    tripCode: string,
+  ): Promise<string | null> {
+    const file = {
+      buffer,
+      originalname: `liquidacion-${tripCode}.pdf`,
+      mimetype: 'application/pdf',
+    } as Express.Multer.File;
+
+    try {
+      return await this.storageService.uploadFile(file, 'settlements');
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo archivar en S3 el PDF de la liquidación del viaje ` +
+          `${tripCode}: ${mensajeDeError(error)}. La liquidación se guarda sin ` +
+          'copia archivada; el PDF se regenera cuando se pida.',
+      );
+      return null;
+    }
+  }
+
+  /** Genera el PDF de un viaje y lo archiva en S3; devuelve la key si pudo. */
   private async uploadPdf(
     trip: Trip,
     summary: TripSummary,
     entries: TripLogEntry[],
     settlement?: Settlement,
-  ): Promise<string> {
+  ): Promise<string | null> {
     const pdfBuffer = await this.buildPdf(trip, summary, entries, settlement);
-    const file = {
-      buffer: pdfBuffer,
-      originalname: `liquidacion-${trip.code}.pdf`,
-      mimetype: 'application/pdf',
-    } as Express.Multer.File;
-    return this.storageService.uploadFile(file, 'settlements');
+    return this.subirPdf(pdfBuffer, trip.code);
   }
 
   /**

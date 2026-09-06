@@ -75,6 +75,13 @@ export class Settlement extends TenantEntity {
   })
   status: SettlementStatus;
 
-  @Column({ nullable: true })
-  pdfKey: string;
+  /**
+   * Key de la copia del comprobante archivada en S3.
+   *
+   * Nula cuando el archivado falló (bucket caído, sin internet): el PDF se
+   * rehace con los datos de la liquidación cuando alguien lo pide, así que la
+   * falta de copia no le quita nada a la rendición.
+   */
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  pdfKey: string | null;
 }
