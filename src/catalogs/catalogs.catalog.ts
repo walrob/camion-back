@@ -67,6 +67,7 @@ export const CATALOG = {
   EMPLOYEE_POSITION: 'employee_position',
   LEAVE_TYPE: 'leave_type',
   FUEL_TYPE: 'fuel_type',
+  TRIP_CLASSIFICATION: 'trip_classification',
 } as const;
 
 export const CATALOG_DEFS: CatalogDef[] = [
@@ -206,6 +207,20 @@ export const CATALOG_DEFS: CatalogDef[] = [
       { key: 'gasoline', label: 'Nafta', color: 'info', icon: 'mdi-fuel' },
       { key: 'gnc', label: 'GNC', color: 'success', icon: 'mdi-gas-cylinder' },
       { key: 'adblue', label: 'AdBlue', color: 'secondary', icon: 'mdi-water' },
+    ],
+  },
+  {
+    key: CATALOG.TRIP_CLASSIFICATION,
+    label: 'Clasificación de viaje',
+    help: 'Cómo agrupa la empresa sus viajes por ruta: «Ida Brasil», «Vuelta Brasil», «Nacional». Cada operación tiene las suyas, así que lo que trae el sistema es apenas un punto de partida para renombrar.',
+    items: [
+      { key: 'national', label: 'Nacional', color: 'primary', icon: 'mdi-map-marker' },
+      {
+        key: 'international',
+        label: 'Internacional',
+        color: 'info',
+        icon: 'mdi-earth',
+      },
     ],
   },
 ];

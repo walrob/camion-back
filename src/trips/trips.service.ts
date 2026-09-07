@@ -43,6 +43,9 @@ import { OeaService } from 'src/oea/oea.service';
 import { DocumentsService } from 'src/documents/documents.service';
 import { SettingsService } from 'src/settings/settings.service';
 import { SETTING } from 'src/settings/settings.catalog';
+import { CatalogsService } from 'src/catalogs/catalogs.service';
+import { CATALOG } from 'src/catalogs/catalogs.catalog';
+import { CurrenciesService } from 'src/currencies/currencies.service';
 import { DocumentOwnerType } from 'src/common/enums/document.enum';
 
 /** Normaliza una fecha a 'YYYY-MM-DD', que es como se guardan las del legajo. */
@@ -100,6 +103,8 @@ export class TripsService {
     private readonly documentsService: DocumentsService,
     private readonly settings: SettingsService,
     private readonly pdfCompany: PdfCompanyService,
+    private readonly catalogsService: CatalogsService,
+    private readonly currenciesService: CurrenciesService,
   ) {}
 
   async create(dto: CreateTripDto, user: ActiveUserInterface): Promise<Trip> {
@@ -122,6 +127,9 @@ export class TripsService {
     // vencido y otras que prefieren el aviso y resolverlo en la ruta. Con el
     // ajuste apagado —el default— el sistema sigue avisando por alerta.
     await this.assertDocumentacionVigente(dto, driver.id);
+
+    await this.assertClasificacionVigente(dto.classification);
+    await this.assertViajeInternacional(dto);
 
     const trip = this.tripsRepository.create({
       ...tripData,
@@ -358,6 +366,9 @@ export class TripsService {
         'Solo se puede editar un viaje en estado asignado.',
       );
     }
+
+    await this.assertClasificacionVigente(dto.classification);
+    await this.assertViajeInternacional(dto);
 
     const { closeLeave, ...tripData } = dto;
     // Revalidar solo si cambia el chofer o la fecha de inicio; el resto de los
@@ -685,6 +696,53 @@ export class TripsService {
    * El mensaje nombra a quién le falta el papel: «no se puede asignar» sin decir
    * cuál obliga a salir a buscarlo por todo el sistema.
    */
+  /**
+   * La clasificación de ruta sale del catálogo de la empresa. Se valida acá y
+   * no con un `@IsEnum` en el DTO porque el conjunto de valores lo define cada
+   * empresa: «Ida Brasil» existe para una y no para otra.
+   */
+  private async assertClasificacionVigente(classification?: string) {
+    if (!classification) return;
+    await this.catalogsService.assertVigente(
+      CATALOG.TRIP_CLASSIFICATION,
+      classification,
+      'Clasificación de viaje',
+    );
+  }
+
+  /**
+   * El país de destino y la moneda del viaje sólo existen si la empresa hace
+   * viajes internacionales (docs/CONFIGURACION.md §7.6).
+   *
+   * Se rechaza en vez de ignorarlos en silencio: un país guardado en una
+   * empresa que tiene la función apagada no se ve en ninguna pantalla, y
+   * descubrirlo son horas de mirar por qué el dato «no se guardó».
+   *
+   * La moneda se valida contra las que la empresa tiene habilitadas: una que no
+   * está habilitada no tiene cotización, y la bitácora la propondría en cada
+   * gasto para después no poder convertir ninguno.
+   */
+  private async assertViajeInternacional(dto: CreateTripDto | UpdateTripDto) {
+    if (dto.destinationCountry == null && dto.currency == null) return;
+
+    if (!(await this.settings.getBoolean(SETTING.TRIP_INTERNATIONAL))) {
+      throw new BadRequestException(
+        'Tu empresa no tiene habilitados los viajes internacionales. ' +
+          'Activalos en Configuración para cargar país de destino y moneda del viaje.',
+      );
+    }
+
+    if (dto.currency) {
+      const activas = await this.currenciesService.activas();
+      if (!activas.some((c) => c.code === dto.currency)) {
+        throw new BadRequestException(
+          `La moneda ${dto.currency} no está habilitada. ` +
+            `Habilitala en Configuración antes de usarla en un viaje.`,
+        );
+      }
+    }
+  }
+
   private async assertDocumentacionVigente(
     dto: CreateTripDto,
     driverId: string,

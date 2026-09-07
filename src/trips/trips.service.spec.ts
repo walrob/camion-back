@@ -15,6 +15,9 @@ import { OeaService } from 'src/oea/oea.service';
 import { DocumentsService } from 'src/documents/documents.service';
 import { SettingsService } from 'src/settings/settings.service';
 import { PdfCompanyService } from 'src/common/pdf/pdf-company.service';
+import { CatalogsService } from 'src/catalogs/catalogs.service';
+import { CurrenciesService } from 'src/currencies/currencies.service';
+import { SETTING } from 'src/settings/settings.catalog';
 import { EmploymentStatus } from 'src/common/enums/employmentStatus.enum';
 import { EmploymentMovementType } from 'src/common/enums/employmentMovement.enum';
 
@@ -36,6 +39,9 @@ describe('TripsService: asignación según la situación del legajo', () => {
   let alertsService: { createFromLeaveAssignment: jest.Mock };
   let sequencesService: { nextCode: jest.Mock };
   let settingsService: { getBoolean: jest.Mock; getString: jest.Mock };
+  let currenciesService: { activas: jest.Mock };
+  /** Ajustes de la empresa. Vacío = todos en su valor por defecto (`false`). */
+  let ajustes: Record<string, boolean>;
 
   /** Situación en la fecha del viaje y, opcionalmente, la de hoy. */
   const employmentIs = (
@@ -74,10 +80,17 @@ describe('TripsService: asignación según la situación del legajo', () => {
     alertsService = { createFromLeaveAssignment: jest.fn() };
     sequencesService = { nextCode: jest.fn().mockResolvedValue('V-00001') };
     // Ajustes en sus valores por defecto: el bloqueo por documentación vencida
-    // viene apagado, así que `create` no consulta documentos.
+    // y los viajes internacionales vienen apagados, así que `create` no
+    // consulta documentos ni acepta país de destino.
+    ajustes = {};
     settingsService = {
-      getBoolean: jest.fn().mockResolvedValue(false),
+      getBoolean: jest.fn(async (key: string) => ajustes[key] ?? false),
       getString: jest.fn().mockResolvedValue('V-'),
+    };
+    currenciesService = {
+      activas: jest
+        .fn()
+        .mockResolvedValue([{ code: 'ARS', isBase: true }, { code: 'PYG' }]),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -109,6 +122,10 @@ describe('TripsService: asignación según la situación del legajo', () => {
         { provide: SettingsService, useValue: settingsService },
         // Sólo lo usa la hoja de ruta en PDF, que estos casos no ejercitan.
         { provide: PdfCompanyService, useValue: { encabezado: jest.fn() } },
+        // Valida la clasificación de ruta contra el catálogo de la empresa.
+        { provide: CatalogsService, useValue: { assertVigente: jest.fn() } },
+        // Valida la moneda del viaje internacional.
+        { provide: CurrenciesService, useValue: currenciesService },
       ],
     }).compile();
 
@@ -228,5 +245,58 @@ describe('TripsService: asignación según la situación del legajo', () => {
   it('no persiste closeLeave como campo del viaje', async () => {
     await service.create({ ...baseTrip, closeLeave: true }, activeUser);
     expect(tripsRepo.create.mock.calls[0][0].closeLeave).toBeUndefined();
+  });
+
+  // ── Viaje internacional (docs/CONFIGURACION.md §7.6) ──
+
+  it('un viaje sin país ni moneda no consulta el ajuste internacional', async () => {
+    await service.create({ ...baseTrip }, activeUser);
+    expect(settingsService.getBoolean).not.toHaveBeenCalledWith(
+      SETTING.TRIP_INTERNATIONAL,
+    );
+  });
+
+  it('rechaza el país de destino si la empresa no hace internacionales', async () => {
+    await expect(
+      service.create({ ...baseTrip, destinationCountry: 'BR' }, activeUser),
+    ).rejects.toThrow(/viajes internacionales/);
+    expect(tripsRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('acepta país y moneda con el ajuste activo', async () => {
+    ajustes[SETTING.TRIP_INTERNATIONAL] = true;
+    await service.create(
+      { ...baseTrip, destinationCountry: 'PY', currency: 'PYG' },
+      activeUser,
+    );
+    const guardado = tripsRepo.create.mock.calls[0][0];
+    expect(guardado.destinationCountry).toBe('PY');
+    expect(guardado.currency).toBe('PYG');
+  });
+
+  it('deja limpiar el país mandando null, aunque el ajuste esté apagado', async () => {
+    // Ausente es «no lo toques»; null es «sacáselo». Si limpiar exigiera tener
+    // la función activa, una empresa que la apaga quedaría con países viejos
+    // pegados y sin forma de sacarlos.
+    await service.create(
+      { ...baseTrip, destinationCountry: null, currency: null } as any,
+      activeUser,
+    );
+    const guardado = tripsRepo.create.mock.calls[0][0];
+    expect(guardado.destinationCountry).toBeNull();
+    expect(settingsService.getBoolean).not.toHaveBeenCalledWith(
+      SETTING.TRIP_INTERNATIONAL,
+    );
+  });
+
+  it('rechaza una moneda que la empresa no habilitó', async () => {
+    ajustes[SETTING.TRIP_INTERNATIONAL] = true;
+    await expect(
+      service.create(
+        { ...baseTrip, destinationCountry: 'BR', currency: 'BRL' },
+        activeUser,
+      ),
+    ).rejects.toThrow(/BRL no está habilitada/);
+    expect(tripsRepo.save).not.toHaveBeenCalled();
   });
 });

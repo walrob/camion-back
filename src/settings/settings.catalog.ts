@@ -133,6 +133,14 @@ export const SETTING_DEFS: SettingDef[] = [
     help: 'Impide asignar un viaje cuando el camión, el acoplado o el chofer tienen algún documento vencido. Con esto apagado, el sistema igual avisa.',
   },
   {
+    key: 'trip.international',
+    group: 'trip',
+    type: 'boolean',
+    default: 'false',
+    label: 'Habilitar viajes internacionales',
+    help: 'Suma al viaje el país de destino y la moneda en la que se espera gastar, que es la que la bitácora le propone al chofer en cada gasto. Apagado, el formulario de viaje queda exactamente igual que hoy.',
+  },
+  {
     key: 'trip.codePrefix',
     group: 'trip',
     type: 'string',
@@ -251,6 +259,7 @@ export const SETTING = {
   TRIP_REQUIRE_CHECKLIST: 'trip.requireChecklistToStart',
   TRIP_REQUIRE_OEA: 'trip.requireOeaToStart',
   TRIP_BLOCK_ON_EXPIRED_DOCS: 'trip.blockOnExpiredDocs',
+  TRIP_INTERNATIONAL: 'trip.international',
   TRIP_CODE_PREFIX: 'trip.codePrefix',
   SETTLEMENT_ALLOW_REOPEN: 'settlement.allowReopen',
   SETTLEMENT_REQUIRE_FX: 'settlement.requireFxOnClose',

@@ -16,6 +16,8 @@ import { Settlement } from 'src/settlements/entities/settlement.entity';
 import { OeaModule } from 'src/oea/oea.module';
 import { DocumentsModule } from 'src/documents/documents.module';
 import { PdfModule } from 'src/common/pdf/pdf.module';
+import { CatalogsModule } from 'src/catalogs/catalogs.module';
+import { CurrenciesModule } from 'src/currencies/currencies.module';
 
 @Module({
   imports: [
@@ -40,6 +42,10 @@ import { PdfModule } from 'src/common/pdf/pdf.module';
     DocumentsModule,
     // Membrete de la hoja de ruta en PDF, con los datos de la empresa.
     PdfModule,
+    // La clasificación de ruta del viaje es un catálogo de la empresa.
+    CatalogsModule,
+    // Para validar que la moneda del viaje internacional esté habilitada.
+    CurrenciesModule,
   ],
   controllers: [TripsController],
   providers: [TripsService],

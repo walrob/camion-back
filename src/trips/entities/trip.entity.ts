@@ -76,6 +76,18 @@ export class Trip extends TenantEntity {
   @Column({ nullable: true })
   cargoDescription: string;
 
+  /**
+   * Cómo clasifica la empresa este viaje según su ruta: «Ida Brasil», «Vuelta
+   * Brasil», «Nacional/UY/PY».
+   *
+   * Es una clave del catálogo `trip_classification`, no un enum: las rutas de
+   * una empresa no son las de otra, y agregar la suya no puede requerir una
+   * migración. `origin`/`destination` siguen siendo el detalle; esto es la
+   * categoría con la que se agrupa y se reporta.
+   */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  classification: string | null;
+
   @Column({ type: 'timestamp', nullable: true })
   plannedStartAt: Date;
 
@@ -114,4 +126,27 @@ export class Trip extends TenantEntity {
 
   @Column({ type: 'varchar', length: 3, nullable: true })
   perDiemCurrency: string | null;
+
+  /**
+   * País de destino del viaje internacional, en ISO 3166-1 alfa-2
+   * (docs/CONFIGURACION.md §7.6). Sólo se completa con `trip.international`
+   * activo; apagado —que es el default— el viaje es exactamente el de siempre.
+   *
+   * Es un código y no un catálogo de empresa: un país no es vocabulario propio
+   * de nadie. La lista de destinos vive en el front (`composables/usePaises.ts`)
+   * y acá se valida el formato, no la pertenencia: mantener la misma lista en
+   * los dos lados es justamente lo que se desincroniza.
+   */
+  @Column({ type: 'char', length: 2, nullable: true })
+  destinationCountry: string | null;
+
+  /**
+   * Moneda en la que se espera gastar en este viaje.
+   *
+   * No es decorativa: es la que la bitácora **propone** en cada gasto. Quien
+   * cruza a Paraguay carga en guaraníes toda la semana, y tener que elegirla de
+   * nuevo en cada peaje es donde aparecen los errores de carga.
+   */
+  @Column({ type: 'varchar', length: 3, nullable: true })
+  currency: string | null;
 }
