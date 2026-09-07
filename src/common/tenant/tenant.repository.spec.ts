@@ -36,7 +36,11 @@ describe('TenantRepository: aislamiento por empresa', () => {
     const manager = dataSource.createEntityManager();
     trucks = new TenantRepository(Truck, manager);
     trips = new TenantRepository(Trip, manager);
-  });
+    // Timeout explícito: `buildMetadatas()` carga por glob todas las entidades
+    // y todas las migraciones. Con el suite completo en paralelo eso supera los
+    // 5 s por defecto de jest, y cada migración que se suma lo empuja un poco
+    // más.
+  }, 30000);
 
   /** Corre `fn` como si fuera un request autenticado de `companyId`. */
   const comoEmpresa = <T>(companyId: string, fn: () => T): T =>

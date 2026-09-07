@@ -59,7 +59,10 @@ describe('Modelo multi-empresa', () => {
 
     // Si el glob no resolvió, todo lo que sigue es un falso verde.
     expect(dataSource.entityMetadatas.length).toBeGreaterThan(20);
-  });
+    // Timeout explícito: el hook carga por glob todas las entidades Y todas las
+    // migraciones. Con el suite completo en paralelo eso supera los 5 s por
+    // defecto de jest, y cada migración que se suma lo empuja un poco más.
+  }, 30000);
 
   it('todas las entidades de negocio tienen companyId', () => {
     const sinCompanyId = dataSource.entityMetadatas
