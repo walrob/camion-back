@@ -21,4 +21,6 @@ export enum AlertSourceType {
   MAINTENANCE = 'maintenance',
   /** Situación del legajo: licencia, suspensión o baja del empleado. */
   EMPLOYMENT = 'employment',
+  /** Planilla pre-viaje que no quedó conforme o que espera a Tráfico. */
+  CHECKLIST = 'checklist',
 }

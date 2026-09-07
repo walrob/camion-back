@@ -89,8 +89,55 @@ resultado conforme/no conforme, GPS e idempotencia offline. Pendientes:
       front; (2) los botones de escritura siguen visibles (se optó por el toast global
       en vez de ocultarlos en cada pantalla); se pueden esconder con `authStore.isDemo`
       donde convenga.
+- [~] **Planilla pre-viaje estilo RIP 06 09 01 (checklist OEA de cliente).**
+      **Backend hecho** (migración `1788100000000-ChecklistRip`): la plantilla pasa a
+      tener `code`/`revision`/`revisionDate` (y cada checklist emitido guarda copia
+      de esa identidad); los ítems suman `section`, `helpText`, `type`
+      (condition/ack/photo/text), `expectedAnswer` (polaridad: «¿tiene pérdidas?»
+      espera NO), `requiresPhoto`/`minPhotos`/`maxPhotos` y
+      `requiresValidationOnFail`; el checklist suma `trailerId`, `notes`, `lat`/`lng`,
+      `clientId` (idempotencia offline) y el circuito de **validación de Tráfico**
+      (`PENDING_VALIDATION` + `validatedBy`/`validatedAt`/`validationNotes`, endpoints
+      `POST /checklists/:id/validate` y `GET /checklists/pending-validation`); tabla
+      nueva `checklist_companions` (acompañantes con documento y seguro) con
+      `POST /checklists/:id/companions`. Siete ajustes nuevos en el grupo `checklist`
+      de `settings.catalog.ts`, todos con el default en el comportamiento actual.
+      **Front hecho** (Nuxt build OK): `stores/checklist.ts` con tipos nuevos,
+      agrupación por bloque, conteo de fotos por punto y acciones de acompañantes,
+      firma con GPS y validación; `stores/checklistTemplate.ts` con código/revisión
+      y los flags por punto; `ChecklistItemRow.vue` dibuja los cuatro tipos de punto
+      y respeta la polaridad (con respuesta esperada NO, los botones pasan a Sí/No y
+      el color marca cuál es la mala); `ChecklistCompanions.vue` nuevo;
+      `/chofer/viaje/[id]/checklist` por bloques, con observaciones generales,
+      ubicación al firmar y el cartel de «esperando validación de Tráfico»;
+      `SettingsChecklist.vue` con la identidad del formulario y un diálogo de
+      opciones por punto; `/admin/validaciones` es la bandeja de Tráfico (ítem nuevo
+      en el sidebar, sección Operación). Se agregó `settings.boolCon(key, default)`
+      porque `bool()` supone `false` ante un ajuste no cargado y `allowCompanion`
+      vale `true` por defecto: sin eso, el bloque de acompañantes desaparecía en la
+      app del chofer sin señal.
+      **Acompañante que ya está en el sistema:** `ChecklistCompanion.employeeId` +
+      `idDocumentOnFile`. Si el acompañante es otro chofer, el nombre y el documento
+      se copian del legajo (el servidor los pisa, no los acepta del cliente) y, si
+      tiene su DNI cargado como `Document` de categoría `id_card`, la app deja de
+      pedir la foto. Endpoint `GET /checklists/companion-candidates?search=`, que
+      devuelve nombre, puesto y `hasIdDocument` —nunca el número de documento: el
+      chofer necesita elegir a alguien, no leer los datos de sus compañeros—.
+      **Pendiente:**
+      (1) **seed opcional** de una plantilla RIP de ejemplo para demos;
+      (2) **equipo de frío como concepto propio** — hoy se modela como una sección de
+      la plantilla con sus ítems, que alcanza para la planilla; si más adelante hacen
+      falta temperatura, horas de equipo o alarmas del reefer, eso pide un modelo
+      propio en `fleet` (flag de refrigerado en `Trailer` + lecturas), no más ítems.
+- [~] **Clasificación de ruta en viajes**: `Trip.classification` contra el catálogo
+      nuevo `trip_classification` (el sistema trae «Nacional» e «Internacional»; cada
+      empresa arma las suyas: «Ida Brasil», «Vuelta Brasil»…). Front: selector en
+      `TripFormDialog` y el catálogo en `stores/catalog.ts` con su fallback; la
+      pantalla de catálogos ya lo lista sola porque se dibuja desde el back.
+      **Falta:** filtrar por clasificación en `/admin/viajes` y abrir por ella en
+      indicadores, que es donde la clasificación empieza a pagar.
 - [ ] (agregar aquí nuevas ideas a medida que aparezcan)
 
 ---
 
-_Última actualización: 2026-06-30._
+_Última actualización: 2026-09-07._

@@ -7,7 +7,11 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { ChecklistItemStatus } from 'src/common/enums/checklist.enum';
+import {
+  ChecklistAnswer,
+  ChecklistItemStatus,
+  ChecklistItemType,
+} from 'src/common/enums/checklist.enum';
 import { Checklist } from './checklist.entity';
 import { TenantEntity } from 'src/common/entities/tenant.entity';
 
@@ -42,6 +46,12 @@ export class ChecklistItem extends TenantEntity {
   @Column()
   label: string;
 
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  section: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  helpText: string | null;
+
   @Column({ type: 'int', default: 0 })
   order: number;
 
@@ -56,6 +66,43 @@ export class ChecklistItem extends TenantEntity {
 
   @Column({ default: false })
   requiresPhotoOnFail: boolean;
+
+  @Column({ default: false })
+  requiresPhoto: boolean;
+
+  @Column({ type: 'int', default: 1 })
+  minPhotos: number;
+
+  @Column({ type: 'int', nullable: true })
+  maxPhotos: number | null;
+
+  @Column({ default: false })
+  requiresValidationOnFail: boolean;
+
+  @Column({
+    type: 'enum',
+    enum: ChecklistItemType,
+    default: ChecklistItemType.CONDITION,
+  })
+  type: ChecklistItemType;
+
+  @Column({
+    type: 'enum',
+    enum: ChecklistAnswer,
+    default: ChecklistAnswer.YES,
+  })
+  expectedAnswer: ChecklistAnswer;
+
+  /**
+   * Lo que el chofer contestó, tal cual. `status` es la lectura de esa
+   * respuesta contra `expectedAnswer`, y la hace el servidor.
+   *
+   * Se guardan las dos porque responden preguntas distintas: ante un reclamo,
+   * «el chofer declaró que la unidad tenía pérdidas» no es lo mismo que «el
+   * punto figuraba como no conforme».
+   */
+  @Column({ type: 'enum', enum: ChecklistAnswer, nullable: true })
+  answer: ChecklistAnswer | null;
 
   @Column({
     type: 'enum',

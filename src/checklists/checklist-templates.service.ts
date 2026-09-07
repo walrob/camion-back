@@ -9,7 +9,11 @@ import { IsNull, Repository } from 'typeorm';
 import { ChecklistTemplate } from './entities/checklist-template.entity';
 import { ChecklistTemplateItem } from './entities/checklist-template-item.entity';
 import { SaveChecklistTemplateDto } from './dto/save-checklist-template.dto';
-import { DEFAULT_CHECKLIST_ITEMS } from 'src/common/enums/checklist.enum';
+import {
+  ChecklistAnswer,
+  ChecklistItemType,
+  DEFAULT_CHECKLIST_ITEMS,
+} from 'src/common/enums/checklist.enum';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
 import { PlanContextService } from 'src/plans/plan-context.service';
 import { Feature } from 'src/common/enums/feature.enum';
@@ -19,9 +23,28 @@ import { getCurrentCompanyId } from 'src/common/tenant/tenant-context';
 export interface PuntoDeChecklist {
   key: string;
   label: string;
+  section: string | null;
+  helpText: string | null;
+  type: ChecklistItemType;
+  expectedAnswer: ChecklistAnswer;
   order: number;
   isCritical: boolean;
   requiresPhotoOnFail: boolean;
+  requiresPhoto: boolean;
+  minPhotos: number;
+  maxPhotos: number | null;
+  requiresValidationOnFail: boolean;
+}
+
+/**
+ * La plantilla elegida para una unidad, con su identidad documental.
+ *
+ * `template` viene en `null` cuando la empresa no configuró ninguna y se opera
+ * con los puntos del código: no hay formulario que citar.
+ */
+export interface PlantillaResuelta {
+  template: ChecklistTemplate | null;
+  puntos: PuntoDeChecklist[];
 }
 
 @Injectable()
@@ -52,14 +75,15 @@ export class ChecklistTemplatesService {
   }
 
   /**
-   * Los puntos con los que se arma el checklist de un camión.
+   * La plantilla con la que se arma el checklist de un camión, junto con sus
+   * puntos ya resueltos.
    *
    * Orden de resolución: plantilla del tipo de unidad → plantilla general de la
    * empresa → la constante del código. Ese último escalón es lo que hace que
    * una empresa que nunca entró a configurar nada siga teniendo su checklist de
    * siempre (docs/CONFIGURACION.md §2.1).
    */
-  async puntosPara(vehicleType?: string | null): Promise<PuntoDeChecklist[]> {
+  async plantillaPara(vehicleType?: string | null): Promise<PlantillaResuelta> {
     const activas = await this.templatesRepository.find({
       where: { isActive: true },
       relations: ['items'],
@@ -71,17 +95,35 @@ export class ChecklistTemplatesService {
       activas.find((t) => !t.vehicleType);
 
     const items = (elegida?.items ?? []).filter((i) => i.isActive);
-    if (!items.length) return this.puntosPorDefecto();
+    if (!items.length) {
+      return { template: null, puntos: this.puntosPorDefecto() };
+    }
 
-    return items
-      .sort((a, b) => a.order - b.order)
-      .map((i) => ({
-        key: i.key,
-        label: i.label,
-        order: i.order,
-        isCritical: i.isCritical,
-        requiresPhotoOnFail: i.requiresPhotoOnFail,
-      }));
+    return {
+      template: elegida ?? null,
+      puntos: items
+        .sort((a, b) => a.order - b.order)
+        .map((i) => ({
+          key: i.key,
+          label: i.label,
+          section: i.section ?? null,
+          helpText: i.helpText ?? null,
+          type: i.type ?? ChecklistItemType.CONDITION,
+          expectedAnswer: i.expectedAnswer ?? ChecklistAnswer.YES,
+          order: i.order,
+          isCritical: i.isCritical,
+          requiresPhotoOnFail: i.requiresPhotoOnFail,
+          requiresPhoto: i.requiresPhoto ?? false,
+          minPhotos: i.minPhotos ?? 1,
+          maxPhotos: i.maxPhotos ?? null,
+          requiresValidationOnFail: i.requiresValidationOnFail ?? false,
+        })),
+    };
+  }
+
+  /** Sólo los puntos, para quien no necesita saber de qué formulario salieron. */
+  async puntosPara(vehicleType?: string | null): Promise<PuntoDeChecklist[]> {
+    return (await this.plantillaPara(vehicleType)).puntos;
   }
 
   /** Los siete puntos del código, en formato de plantilla. */
@@ -89,9 +131,17 @@ export class ChecklistTemplatesService {
     return DEFAULT_CHECKLIST_ITEMS.map((item, i) => ({
       key: item.key,
       label: item.label,
+      section: null,
+      helpText: null,
+      type: ChecklistItemType.CONDITION,
+      expectedAnswer: ChecklistAnswer.YES,
       order: i,
       isCritical: false,
       requiresPhotoOnFail: false,
+      requiresPhoto: false,
+      minPhotos: 1,
+      maxPhotos: null,
+      requiresValidationOnFail: false,
     }));
   }
 
@@ -107,6 +157,7 @@ export class ChecklistTemplatesService {
     id?: string,
   ): Promise<ChecklistTemplate> {
     this.assertClavesUnicas(dto);
+    this.assertFotosCoherentes(dto);
     await this.assertPlanPermiteTipo(dto.vehicleType ?? null);
     await this.assertTipoLibre(dto.vehicleType ?? null, id);
 
@@ -115,6 +166,11 @@ export class ChecklistTemplatesService {
       : this.templatesRepository.create({ createdBy: user.id });
 
     template.name = dto.name;
+    template.code = dto.code || null;
+    template.revision = dto.revision || null;
+    template.revisionDate = dto.revisionDate
+      ? new Date(dto.revisionDate)
+      : null;
     template.vehicleType = dto.vehicleType || null;
     template.isActive = dto.isActive ?? true;
     template.updatedBy = user.id;
@@ -127,9 +183,17 @@ export class ChecklistTemplatesService {
           templateId: guardada.id,
           key: item.key,
           label: item.label,
+          section: item.section || null,
+          helpText: item.helpText || null,
+          type: item.type ?? ChecklistItemType.CONDITION,
+          expectedAnswer: item.expectedAnswer ?? ChecklistAnswer.YES,
           order: item.order ?? i,
           isCritical: item.isCritical ?? false,
           requiresPhotoOnFail: item.requiresPhotoOnFail ?? false,
+          requiresPhoto: item.requiresPhoto ?? false,
+          minPhotos: item.minPhotos ?? 1,
+          maxPhotos: item.maxPhotos ?? null,
+          requiresValidationOnFail: item.requiresValidationOnFail ?? false,
           isActive: item.isActive ?? true,
         }),
       ),
@@ -161,6 +225,30 @@ export class ChecklistTemplatesService {
   }
 
   /**
+   * Un tope de fotos menor al mínimo deja un ítem que no se puede completar: el
+   * chofer nunca podría firmar. Es más barato rechazarlo al configurar la
+   * plantilla que descubrirlo en la playa de carga.
+   */
+  private assertFotosCoherentes(dto: SaveChecklistTemplateDto) {
+    for (const item of dto.items) {
+      const min = item.minPhotos ?? 1;
+      if (item.maxPhotos != null && item.maxPhotos < min) {
+        throw new BadRequestException(
+          `En «${item.label}», el máximo de fotos (${item.maxPhotos}) es menor que el mínimo (${min}).`,
+        );
+      }
+      if (
+        item.type === ChecklistItemType.PHOTO &&
+        item.requiresPhoto === false
+      ) {
+        throw new BadRequestException(
+          `«${item.label}» es un punto de fotos: la foto tiene que ser obligatoria, o cambiale el tipo de ítem.`,
+        );
+      }
+    }
+  }
+
+  /**
    * Tener **una** plantilla propia entra con el plan Operación; tener una
    * distinta por tipo de unidad es de Gestión (MODELO-COMERCIAL §4.1).
    *
@@ -185,8 +273,8 @@ export class ChecklistTemplatesService {
 
   /**
    * Una sola plantilla por tipo de unidad (y una sola general). Con dos, la
-   * resolución de `puntosPara` sería un sorteo y nadie sabría con qué checklist
-   * va a salir el camión.
+   * resolución de `plantillaPara` sería un sorteo y nadie sabría con qué
+   * checklist va a salir el camión.
    */
   private async assertTipoLibre(vehicleType: string | null, id?: string) {
     const existente = await this.templatesRepository.findOne({

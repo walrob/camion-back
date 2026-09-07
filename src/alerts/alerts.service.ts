@@ -16,6 +16,7 @@ import {
   AlertStatus,
 } from 'src/common/enums/alert.enum';
 import { IncidentSeverity } from 'src/common/enums/incident.enum';
+import { ChecklistResult } from 'src/common/enums/checklist.enum';
 import { TruckStatus } from 'src/common/enums/truckStatus.enum';
 import { TripStatus } from 'src/common/enums/tripStatus.enum';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
@@ -132,6 +133,41 @@ export class AlertsService {
       sourceId: incident.id,
       title: `Incidente ${incident.code}`,
       message: `Nuevo incidente (${incident.type}) con severidad ${incident.severity}.`,
+    });
+  }
+
+  /**
+   * El chofer firmó una planilla que no libera la unidad.
+   *
+   * La planilla repite tres veces «avise de inmediato a su operador de
+   * tráfico», y hasta ahora ese aviso dependía enteramente de que el chofer
+   * llamara. Va con dedup por planilla: si se reintenta la firma, no se
+   * duplica el aviso.
+   */
+  async createFromChecklist(checklist: {
+    id: string;
+    tripId: string;
+    result: string;
+    motivos: string[];
+    conAcompanante: boolean;
+  }) {
+    const pendiente = checklist.result === ChecklistResult.PENDING_VALIDATION;
+    const detalle = checklist.motivos.length
+      ? `Puntos declarados: ${checklist.motivos.join(', ')}.`
+      : checklist.conAcompanante
+        ? 'Viaja con acompañante declarado.'
+        : 'Sin puntos en falla.';
+
+    return this.createDedup({
+      level: pendiente ? AlertLevel.ORANGE : AlertLevel.RED,
+      sourceType: AlertSourceType.CHECKLIST,
+      sourceId: checklist.id,
+      title: pendiente
+        ? 'Planilla pendiente de validación'
+        : 'Planilla pre-viaje rechazada',
+      message: pendiente
+        ? `La unidad no queda liberada hasta que Tráfico valide la planilla. ${detalle}`
+        : `La unidad no está en condiciones de salir. ${detalle}`,
     });
   }
 

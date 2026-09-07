@@ -62,6 +62,11 @@ export const SETTING_GROUPS: SettingGroup[] = [
     label: 'Combustible',
     help: 'Qué datos son obligatorios al cargar un abastecimiento.',
   },
+  {
+    key: 'checklist',
+    label: 'Checklist pre-viaje',
+    help: 'Qué exige la planilla al chofer y quién libera la unidad después de firmarla.',
+  },
 ];
 
 export const SETTING_DEFS: SettingDef[] = [
@@ -177,6 +182,64 @@ export const SETTING_DEFS: SettingDef[] = [
     label: 'Exigir odómetro en cada carga',
     help: 'Recomendado: sin el kilometraje de cada carga no se puede calcular el rendimiento (km/l) ni el costo por kilómetro.',
   },
+
+  // ───────── Checklist ─────────
+  {
+    key: 'checklist.requireValidationOnFail',
+    group: 'checklist',
+    type: 'boolean',
+    default: 'false',
+    label: 'Exigir validación de Tráfico cuando la planilla declara una falla',
+    help: 'Recomendado en operaciones OEA. La planilla firmada con una falla queda pendiente de validación y la unidad NO se libera sola: un operador de tráfico tiene que resolverla. Apagado, la firma resuelve el resultado como hasta ahora.',
+  },
+  {
+    key: 'checklist.allowCompanion',
+    group: 'checklist',
+    type: 'boolean',
+    default: 'true',
+    label: 'Permitir declarar acompañantes',
+    help: 'Muestra en la planilla la pregunta por acompañantes y sus datos. Con esto apagado, declarar uno es rechazado.',
+  },
+  {
+    key: 'checklist.requireCompanionInsurance',
+    group: 'checklist',
+    type: 'boolean',
+    default: 'false',
+    label: 'Exigir el seguro del acompañante para firmar',
+    help: 'El chofer no puede firmar si declaró un acompañante sin marcar que pidió el seguro a su operador de tráfico.',
+  },
+  {
+    key: 'checklist.requireCompanionDocument',
+    group: 'checklist',
+    type: 'boolean',
+    default: 'false',
+    label: 'Exigir el documento del acompañante',
+    help: 'Obliga a cargar el número de documento de cada acompañante antes de firmar. La foto del DNI se adjunta aparte.',
+  },
+  {
+    key: 'checklist.requireValidationWithCompanion',
+    group: 'checklist',
+    type: 'boolean',
+    default: 'false',
+    label: 'Exigir validación de Tráfico si viaja con acompañante',
+    help: 'Aunque la planilla esté toda conforme, declarar un acompañante la deja pendiente de validación: la unidad no se dirige al cliente hasta que Tráfico la libere.',
+  },
+  {
+    key: 'checklist.requireGeolocation',
+    group: 'checklist',
+    type: 'boolean',
+    default: 'false',
+    label: 'Exigir la ubicación al firmar',
+    help: 'No deja firmar sin coordenadas. Sirve para probar que la planilla se completó en el lugar y no desde otro lado.',
+  },
+  {
+    key: 'checklist.alertOnReject',
+    group: 'checklist',
+    type: 'boolean',
+    default: 'false',
+    label: 'Avisar al operador de tráfico cuando una planilla no queda conforme',
+    help: 'Recomendado: genera una alerta en el tablero apenas el chofer firma una planilla rechazada o pendiente de validación. Hoy el sistema no avisa nada y el aviso depende de que el chofer llame.',
+  },
 ];
 
 export const SETTING_BY_KEY: Map<string, SettingDef> = new Map(
@@ -195,4 +258,12 @@ export const SETTING = {
   BASE_CURRENCY: 'locale.baseCurrency',
   LOCALE: 'locale.locale',
   FUEL_REQUIRE_ODOMETER: 'fuel.requireOdometer',
+  CHECKLIST_REQUIRE_VALIDATION_ON_FAIL: 'checklist.requireValidationOnFail',
+  CHECKLIST_ALLOW_COMPANION: 'checklist.allowCompanion',
+  CHECKLIST_REQUIRE_COMPANION_INSURANCE: 'checklist.requireCompanionInsurance',
+  CHECKLIST_REQUIRE_COMPANION_DOCUMENT: 'checklist.requireCompanionDocument',
+  CHECKLIST_REQUIRE_VALIDATION_WITH_COMPANION:
+    'checklist.requireValidationWithCompanion',
+  CHECKLIST_REQUIRE_GEOLOCATION: 'checklist.requireGeolocation',
+  CHECKLIST_ALERT_ON_REJECT: 'checklist.alertOnReject',
 } as const;

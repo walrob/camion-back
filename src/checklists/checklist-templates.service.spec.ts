@@ -4,7 +4,11 @@ import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ChecklistTemplatesService } from './checklist-templates.service';
 import { ChecklistTemplate } from './entities/checklist-template.entity';
 import { ChecklistTemplateItem } from './entities/checklist-template-item.entity';
-import { DEFAULT_CHECKLIST_ITEMS } from 'src/common/enums/checklist.enum';
+import {
+  ChecklistAnswer,
+  ChecklistItemType,
+  DEFAULT_CHECKLIST_ITEMS,
+} from 'src/common/enums/checklist.enum';
 import { PlanContextService } from 'src/plans/plan-context.service';
 import { Feature } from 'src/common/enums/feature.enum';
 
@@ -156,5 +160,71 @@ describe('ChecklistTemplatesService', () => {
     await expect(
       service.save({ name: 'General 2', items: [{ key: 'luces', label: 'Luces' }] } as any, admin),
     ).rejects.toThrow(BadRequestException);
+  });
+
+  it('rechaza un tope de fotos menor que el mínimo', async () => {
+    await expect(
+      service.save(
+        {
+          name: 'General',
+          items: [
+            { key: 'interior', label: 'Interior', minPhotos: 3, maxPhotos: 2 },
+          ],
+        } as any,
+        admin,
+      ),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('rechaza un punto de fotos que no exige foto', async () => {
+    await expect(
+      service.save(
+        {
+          name: 'General',
+          items: [
+            {
+              key: 'interior',
+              label: 'Interior',
+              type: ChecklistItemType.PHOTO,
+              requiresPhoto: false,
+            },
+          ],
+        } as any,
+        admin,
+      ),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('los puntos por defecto esperan que la respuesta buena sea SÍ', () => {
+    const puntos = service.puntosPorDefecto();
+    expect(
+      puntos.every(
+        (p) =>
+          p.expectedAnswer === ChecklistAnswer.YES &&
+          p.type === ChecklistItemType.CONDITION,
+      ),
+    ).toBe(true);
+  });
+
+  it('resuelve la plantilla con su identidad documental', async () => {
+    templates.find.mockResolvedValue([
+      {
+        id: 'tpl-1',
+        code: 'RIP 06 09 01',
+        revision: 'REV.04',
+        vehicleType: null,
+        items: [item('zunchos', { expectedAnswer: ChecklistAnswer.YES })],
+      },
+    ]);
+
+    const { template, puntos } = await service.plantillaPara(null);
+    expect(template?.code).toBe('RIP 06 09 01');
+    expect(template?.revision).toBe('REV.04');
+    expect(puntos.map((p) => p.key)).toEqual(['zunchos']);
+  });
+
+  it('sin plantilla configurada no hay formulario que citar', async () => {
+    const { template } = await service.plantillaPara(null);
+    expect(template).toBeNull();
   });
 });
