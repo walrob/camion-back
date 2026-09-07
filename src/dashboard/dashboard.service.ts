@@ -6,6 +6,7 @@ import { Trip } from 'src/trips/entities/trip.entity';
 import { TripLogEntry } from 'src/trip-log/entities/trip-log-entry.entity';
 import { Incident } from 'src/incidents/entities/incident.entity';
 import { Alert } from 'src/alerts/entities/alert.entity';
+import { Document } from 'src/documents/entities/document.entity';
 import { IncidentStatus } from 'src/common/enums/incident.enum';
 import { TripStatus } from 'src/common/enums/tripStatus.enum';
 import { TripLogType } from 'src/common/enums/tripLogType.enum';
@@ -27,6 +28,8 @@ export class DashboardService {
     private readonly incidentsRepository: Repository<Incident>,
     @InjectRepository(Alert)
     private readonly alertsRepository: Repository<Alert>,
+    @InjectRepository(Document)
+    private readonly documentsRepository: Repository<Document>,
     private readonly maintenanceService: MaintenanceService,
     private readonly planContext: PlanContextService,
   ) {}
@@ -64,6 +67,7 @@ export class DashboardService {
       upcoming,
       openIncidents,
       trends,
+      expirations,
     ] = await Promise.all([
       this.groupCount(this.trucksRepository, 'status'),
       this.incidentsBySeverity(),
@@ -78,6 +82,7 @@ export class DashboardService {
         where: { status: Not(IncidentStatus.RESOLVED) },
       }),
       this.buildTrends(range, conBitacora),
+      this.documentExpirations(),
     ]);
 
     return {
@@ -99,7 +104,53 @@ export class DashboardService {
       driversWithNews,
       upcomingMaintenance: upcoming ? upcoming.length : null,
       trends,
+      // Vencimientos documentales por ventana de urgencia. El panel ya decía
+      // cuántas alertas hay; esto dice cuándo vencen, que es lo que ordena el
+      // trabajo de la semana. `documents` está en todos los planes: no se gatea.
+      expirations,
     };
+  }
+
+  /**
+   * Documentos por vencer, agrupados por urgencia: vencidos, y a 7, 30 y 90
+   * días. Las ventanas son excluyentes —un documento cae en una sola— para que
+   * las barras se puedan apilar sin contar dos veces.
+   */
+  private async documentExpirations(): Promise<{
+    expired: number;
+    in7: number;
+    in30: number;
+    in90: number;
+  }> {
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    const enDias = (d: number) => {
+      const f = new Date(hoy);
+      f.setDate(f.getDate() + d);
+      return f.toISOString().slice(0, 10);
+    };
+
+    const rows = await this.documentsRepository
+      .createQueryBuilder('d')
+      .select(
+        `CASE
+           WHEN d.expiryDate < :hoy THEN 'expired'
+           WHEN d.expiryDate <= :d7 THEN 'in7'
+           WHEN d.expiryDate <= :d30 THEN 'in30'
+           ELSE 'in90'
+         END`,
+        'k',
+      )
+      .addSelect('COUNT(*)', 'c')
+      .where('d.expiryDate IS NOT NULL')
+      .andWhere('d.expiryDate <= :d90', { d90: enDias(90) })
+      .setParameters({ hoy: enDias(0), d7: enDias(7), d30: enDias(30) })
+      .groupBy('k')
+      .getRawMany();
+
+    const conteo = { expired: 0, in7: 0, in30: 0, in90: 0 };
+    for (const r of rows) conteo[r.k as keyof typeof conteo] = Number(r.c);
+    return conteo;
   }
 
   /**

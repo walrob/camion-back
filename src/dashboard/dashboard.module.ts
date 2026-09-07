@@ -9,10 +9,18 @@ import { Trip } from 'src/trips/entities/trip.entity';
 import { TripLogEntry } from 'src/trip-log/entities/trip-log-entry.entity';
 import { Incident } from 'src/incidents/entities/incident.entity';
 import { Alert } from 'src/alerts/entities/alert.entity';
+import { Document } from 'src/documents/entities/document.entity';
 
 @Module({
   imports: [
-    TenantTypeOrmModule.forFeature([Truck, Trip, TripLogEntry, Incident, Alert]),
+    TenantTypeOrmModule.forFeature([
+      Truck,
+      Trip,
+      TripLogEntry,
+      Incident,
+      Alert,
+      Document,
+    ]),
     forwardRef(() => AuthModule),
     MaintenanceModule,
   ],
