@@ -93,6 +93,38 @@ export class SuperadminController {
     return ficha;
   }
 
+  /**
+   * Configuración efectiva de una empresa (docs/CONFIGURACION.md §13).
+   *
+   * Misma forma que `GET /settings`: `{ groups, settings }` con `value` e
+   * `isDefault` por ajuste. Sólo lectura, y auditado como la ficha: leer la
+   * configuración de un cliente es el mismo privilegio que leer sus datos.
+   */
+  @Get('companies/:id/settings')
+  @ApiOperation({
+    summary: 'Configuración efectiva de una empresa. Sólo lectura, para soporte.',
+  })
+  async configuracionDeEmpresa(
+    @Param('id') id: string,
+    @ActiveUser() user: ActiveUserInterface,
+    @Req() req: Request,
+  ) {
+    const configuracion = await this.superadmin.configuracionDe(id);
+
+    await this.auditLog.registrar(
+      user,
+      {
+        action: AUDIT.SUPERADMIN_VIEWED_COMPANY,
+        companyId: id,
+        entityType: 'company',
+        entityId: id,
+      },
+      req as never,
+    );
+
+    return configuracion;
+  }
+
   @Get('billing')
   @ApiOperation({ summary: 'Períodos impagos de todas las empresas.' })
   cobranzas(@Query('page') page?: string, @Query('limit') limit?: string) {

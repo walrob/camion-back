@@ -11,6 +11,7 @@ import { MpWebhookEvent } from 'src/billing/entities/mp-webhook-event.entity';
 import { CompanyStatus } from 'src/common/enums/companyStatus.enum';
 import { BillingStatus } from 'src/common/enums/billing.enum';
 import { BillingService } from 'src/billing/billing.service';
+import { SettingsService } from 'src/settings/settings.service';
 import { PlanContextService } from 'src/plans/plan-context.service';
 import { runAsCompany, runAsSystem } from 'src/common/tenant/tenant-context';
 import { calcularPrecioMensual, Prepago } from 'src/billing/pricing.util';
@@ -39,7 +40,34 @@ export class SuperadminService {
     private readonly eventosMpRepository: Repository<MpWebhookEvent>,
     private readonly billing: BillingService,
     private readonly planContext: PlanContextService,
+    // `SettingsModule` es @Global: no hace falta importarlo.
+    private readonly settings: SettingsService,
   ) {}
+
+  /**
+   * Configuración efectiva de una empresa, para soporte
+   * (docs/CONFIGURACION.md §13).
+   *
+   * Ante un «esto no anda», lo primero que hace falta saber es cómo está
+   * configurada esa empresa: la mitad de los reclamos son un ajuste puesto a
+   * propósito y olvidado. Sin esto, soporte contesta a ciegas o pide capturas.
+   *
+   * Es de **sólo lectura**: quien cambia la configuración de una empresa es su
+   * propio admin, desde su pantalla. Acá se mira para poder responder.
+   *
+   * Se lee dentro del contexto de la empresa y con el **mismo** `describe()`
+   * que consume su pantalla de Configuración: una consulta paralela armada acá
+   * podría devolver algo distinto de lo que el cliente ve, que es justo el
+   * malentendido que este endpoint viene a evitar.
+   */
+  async configuracionDe(companyId: string) {
+    const existe = await runAsSystem(() =>
+      this.companiesRepository.exists({ where: { id: companyId } }),
+    );
+    if (!existe) throw new NotFoundException('Empresa no encontrada.');
+
+    return runAsCompany(companyId, () => this.settings.describe());
+  }
 
   /**
    * Tablero: MRR, altas, mora y trials por vencer.
