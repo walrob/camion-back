@@ -24,6 +24,14 @@ import { Role } from 'src/common/enums/role.enum';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
 import { DriversService } from 'src/drivers/drivers.service';
 import { paginateAndSearch } from 'src/common/utils/paginate-and-search.util';
+import {
+  assertExportSize,
+  boolCell,
+  buildXlsx,
+  dateTimeCell,
+  ExcelRow,
+  EXPORT_ROW_LIMIT,
+} from 'src/common/excel';
 import { resolveSort } from 'src/common/utils/resolve-sort.util';
 import { assertNoCerrado } from 'src/common/utils/registro-cerrado.util';
 
@@ -34,6 +42,13 @@ const OEA_SORTABLE: Record<string, string> = {
   tripNumber: 'tripNumber',
   result: 'result',
   createdAt: 'createdAt',
+};
+
+/** Idénticas a las del front (`useOea.ts`). */
+const OEA_RESULT_LABELS: Record<string, string> = {
+  [OeaResult.PENDING]: 'Pendiente',
+  [OeaResult.CONFORME]: 'Conforme',
+  [OeaResult.NO_CONFORME]: 'No conforme',
 };
 
 @Injectable()
@@ -225,6 +240,58 @@ export class OeaService {
         ...(filter.result && { result: filter.result }),
       },
     });
+  }
+
+  /**
+   * Descarga del listado con los mismos filtros que la tabla, sin paginar.
+   *
+   * Reusa `paginate` en lugar de rearmar la consulta: los filtros de OEA son
+   * siete y duplicarlos garantizaba que tarde o temprano el Excel dejara de
+   * coincidir con la pantalla. El tope de filas hace de límite de la página.
+   */
+  async exportXlsx(filter: OeaFilterDto): Promise<Buffer> {
+    const { items, meta } = await this.paginate(
+      { page: 1, limit: EXPORT_ROW_LIMIT },
+      filter,
+    );
+    assertExportSize(meta.totalItems ?? items.length);
+
+    const columns = [
+      'Fecha',
+      'Camion',
+      'Chofer',
+      'Viaje',
+      'Origen',
+      'Destino',
+      'Carga',
+      'Peso (kg)',
+      'Precinto aduanero',
+      'Precinto de seguridad',
+      'Resultado',
+      'Firmada',
+      'Notas',
+    ];
+
+    const rows: ExcelRow[] = items.map((i) => {
+      const emp = i.driver?.employee;
+      return {
+        Fecha: dateTimeCell(i.inspectedAt),
+        Camion: i.truck?.plate ?? '',
+        Chofer: emp ? `${emp.lastName ?? ''}, ${emp.firstName ?? ''}` : '',
+        Viaje: i.tripNumber ?? '',
+        Origen: i.origin ?? '',
+        Destino: i.destination ?? '',
+        Carga: i.cargoDescription ?? '',
+        'Peso (kg)': i.cargoWeightKg ? Number(i.cargoWeightKg) : '',
+        'Precinto aduanero': i.customsSealNumber ?? '',
+        'Precinto de seguridad': i.securitySealNumber ?? '',
+        Resultado: OEA_RESULT_LABELS[i.result] ?? i.result,
+        Firmada: boolCell(!!i.signedAt),
+        Notas: i.notes ?? '',
+      };
+    });
+
+    return buildXlsx('Planillas OEA', columns, rows);
   }
 
   async listMine(userId: string): Promise<OeaInspection[]> {

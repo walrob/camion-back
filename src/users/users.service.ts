@@ -12,6 +12,16 @@ import { Role } from 'src/common/enums/role.enum';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
 import { IPaginationOptions, Pagination } from 'nestjs-typeorm-paginate';
 import { paginateAndSearch } from 'src/common/utils/paginate-and-search.util';
+import {
+  assertExportSize,
+  boolCell,
+  buildXlsx,
+  dateCell,
+  dateTimeCell,
+  ExcelRow,
+  EXPORT_ROW_LIMIT,
+} from 'src/common/excel';
+import { ROLE_LABELS } from 'src/common/enums/role.enum';
 
 @Injectable()
 export class UsersService {
@@ -93,6 +103,43 @@ export class UsersService {
       baseWhere,
       select: ['id', 'email', 'name', 'phone', 'role', 'createdAt', 'blocked', 'lastConnection'],
     });
+  }
+
+  /**
+   * Descarga del equipo con el mismo buscador y filtro de rol que la tabla.
+   *
+   * Reusa `paginate` para no duplicar el `select` de columnas: la contraseña
+   * y demás campos sensibles quedan fuera en un solo lugar.
+   */
+  async exportXlsx(search?: string, roles?: Role[]): Promise<Buffer> {
+    const { items, meta } = await this.paginate(
+      { page: 1, limit: EXPORT_ROW_LIMIT },
+      search,
+      roles,
+    );
+    assertExportSize(meta.totalItems ?? items.length);
+
+    const columns = [
+      'Nombre',
+      'Email',
+      'Telefono',
+      'Rol',
+      'Estado',
+      'Ultima conexion',
+      'Alta',
+    ];
+
+    const rows: ExcelRow[] = items.map((u) => ({
+      Nombre: u.name ?? '',
+      Email: u.email ?? '',
+      Telefono: u.phone ?? '',
+      Rol: ROLE_LABELS[u.role] ?? u.role,
+      Estado: u.blocked ? 'Bloqueado' : 'Activo',
+      'Ultima conexion': dateTimeCell(u.lastConnection),
+      Alta: dateCell(u.createdAt),
+    }));
+
+    return buildXlsx('Equipo', columns, rows);
   }
 
   async remove(id: string, user: ActiveUserInterface) {

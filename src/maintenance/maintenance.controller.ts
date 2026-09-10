@@ -6,12 +6,15 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Res,
   StreamableFile,
+  UploadedFile,
 } from '@nestjs/common';
 import { Response } from 'express';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { MaintenanceService } from './maintenance.service';
+import { MaintenanceExcelService } from './maintenance-excel.service';
 import { CreatePlanDto } from './dto/create-plan.dto';
 import { UpdatePlanDto } from './dto/update-plan.dto';
 import { CreateOrderDto } from './dto/create-order.dto';
@@ -23,13 +26,17 @@ import { Feature } from 'src/common/enums/feature.enum';
 import { RequiresFeature } from 'src/auth/decorators/requires-feature.decorator';
 import { ActiveUser } from 'src/common/decorators/active-user.decorator';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
+import { ExcelImport, isDryRun, sendXlsx } from 'src/common/excel';
 
 @ApiTags('Maintenance')
 @ApiBearerAuth()
 @RequiresFeature(Feature.MAINTENANCE)
 @Controller('maintenance')
 export class MaintenanceController {
-  constructor(private readonly maintenanceService: MaintenanceService) {}
+  constructor(
+    private readonly maintenanceService: MaintenanceService,
+    private readonly maintenanceExcelService: MaintenanceExcelService,
+  ) {}
 
   // ───────── Planes ─────────
   @Post('plans')
@@ -42,6 +49,55 @@ export class MaintenanceController {
   @Auth(Role.ADMIN, Role.MAINTENANCE, Role.MANAGER)
   allPlans() {
     return this.maintenanceService.allPlans();
+  }
+
+  @Get('plans/export')
+  @RequiresFeature(Feature.EXPORT_EXCEL)
+  @Auth(Role.ADMIN, Role.MAINTENANCE, Role.MANAGER)
+  async exportPlans(
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    const buffer = await this.maintenanceExcelService.exportPlans();
+    return sendXlsx(res, 'planes-mantenimiento.xlsx', buffer);
+  }
+
+  @Get('plans/import/template')
+  @Auth(Role.ADMIN, Role.MAINTENANCE)
+  planTemplate(@Res({ passthrough: true }) res: Response): StreamableFile {
+    return sendXlsx(
+      res,
+      'plantilla-planes-mantenimiento.xlsx',
+      this.maintenanceExcelService.planTemplate(),
+    );
+  }
+
+  @Post('plans/import')
+  @Auth(Role.ADMIN, Role.MAINTENANCE)
+  @ExcelImport()
+  importPlans(
+    @UploadedFile() file: Express.Multer.File,
+    @ActiveUser() user: ActiveUserInterface,
+    @Query('dryRun') dryRun?: string,
+  ) {
+    return this.maintenanceExcelService.importPlans(
+      file.buffer,
+      user,
+      isDryRun(dryRun),
+    );
+  }
+
+  // Sin truckId baja el historial completo del taller; con truckId, el del
+  // camion elegido en la tabla.
+  @Get('orders/export')
+  @RequiresFeature(Feature.EXPORT_EXCEL)
+  @Auth(Role.ADMIN, Role.MAINTENANCE, Role.MANAGER)
+  @ApiQuery({ name: 'truckId', required: false })
+  async exportOrders(
+    @Res({ passthrough: true }) res: Response,
+    @Query('truckId') truckId?: string,
+  ): Promise<StreamableFile> {
+    const buffer = await this.maintenanceExcelService.exportOrders(truckId);
+    return sendXlsx(res, 'ordenes-mantenimiento.xlsx', buffer);
   }
 
   @Get('plans/upcoming')

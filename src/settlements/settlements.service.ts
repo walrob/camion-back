@@ -8,6 +8,12 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { IPaginationOptions, Pagination } from 'nestjs-typeorm-paginate';
+import {
+  assertExportSize,
+  buildXlsx,
+  dateCell,
+  ExcelRow,
+} from 'src/common/excel';
 import { Settlement } from './entities/settlement.entity';
 import { SettlementStatus } from 'src/common/enums/settlementStatus.enum';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
@@ -80,6 +86,22 @@ const TRIP_STATUS_LABELS: Record<string, string> = {
 };
 
 const typeLabel = (type: string): string => TYPE_LABELS[type] ?? type;
+
+const SETTLEMENT_STATUS_LABELS: Record<SettlementStatus, string> = {
+  [SettlementStatus.DRAFT]: 'Borrador',
+  [SettlementStatus.CLOSED]: 'Cerrada',
+};
+
+/** Filtros del listado de rendiciones; los comparten la tabla y la descarga. */
+export interface SettlementListFilters {
+  search?: string;
+  status?: SettlementStatus;
+  driverId?: string;
+  from?: string;
+  to?: string;
+  sortBy?: string;
+  order?: string;
+}
 
 /** Totales que devuelve `TripLogService.summary`, para tipar el armado del PDF. */
 type TripSummary = Awaited<ReturnType<TripLogService['summary']>>;
@@ -312,21 +334,14 @@ export class SettlementsService {
     return settlement;
   }
 
-  async paginate(
-    options: IPaginationOptions,
-    filters: {
-      search?: string;
-      status?: SettlementStatus;
-      driverId?: string;
-      from?: string;
-      to?: string;
-      sortBy?: string;
-      order?: string;
-    },
-  ): Promise<Pagination<Settlement>> {
-    const page = Number(options.page);
-    const limit = Number(options.limit);
-
+  /**
+   * Consulta base del listado, con filtros y orden ya aplicados.
+   *
+   * La comparten `paginate` y la exportación a Excel: si la descarga armara su
+   * propia consulta, cualquier filtro nuevo habría que agregarlo en dos lados y
+   * el Excel dejaría de coincidir con lo que el usuario ve en la tabla.
+   */
+  private buildListQuery(filters: SettlementListFilters) {
     const sort = resolveSort(filters.sortBy, filters.order, SETTLEMENT_SORTABLE, {
       orderBy: 's.createdAt',
       order: 'DESC',
@@ -354,6 +369,61 @@ export class SettlementsService {
     if (filters.driverId) qb.andWhere('t.driverId = :driverId', { driverId: filters.driverId });
     if (filters.from) qb.andWhere('s.createdAt >= :from', { from: filters.from });
     if (filters.to) qb.andWhere('s.createdAt <= :to', { to: filters.to });
+
+    return qb;
+  }
+
+  /** Descarga del listado con los mismos filtros que la tabla, sin paginar. */
+  async exportXlsx(filters: SettlementListFilters): Promise<Buffer> {
+    const qb = this.buildListQuery(filters);
+    assertExportSize(await qb.getCount());
+    const settlements = await qb.getMany();
+
+    const columns = [
+      'Viaje',
+      'Chofer',
+      'Fecha',
+      'Gastos',
+      'Adelantos',
+      'Neto',
+      'Moneda',
+      'Estado',
+      ...Object.values(TYPE_LABELS),
+    ];
+
+    const rows: ExcelRow[] = settlements.map((s) => {
+      const emp = s.trip?.driver?.employee;
+      const totales = s.totalsByType ?? {};
+      return {
+        Viaje: s.trip?.code ?? '',
+        Chofer: emp ? `${emp.lastName ?? ''}, ${emp.firstName ?? ''}` : '',
+        Fecha: dateCell(s.createdAt),
+        Gastos: Number(s.totalExpenses ?? 0),
+        Adelantos: Number(s.totalAdvances ?? 0),
+        Neto: Number(s.netToSettle ?? 0),
+        Moneda: s.currency ?? 'ARS',
+        Estado: SETTLEMENT_STATUS_LABELS[s.status] ?? s.status,
+        // Una columna por tipo de gasto: es lo que hace falta para cruzar la
+        // rendición en una planilla, y el detalle fino ya está en el PDF.
+        ...Object.fromEntries(
+          Object.entries(TYPE_LABELS).map(([key, label]) => [
+            label,
+            Number(totales[key] ?? 0),
+          ]),
+        ),
+      };
+    });
+
+    return buildXlsx('Rendiciones', columns, rows);
+  }
+
+  async paginate(
+    options: IPaginationOptions,
+    filters: SettlementListFilters,
+  ): Promise<Pagination<Settlement>> {
+    const page = Number(options.page);
+    const limit = Number(options.limit);
+    const qb = this.buildListQuery(filters);
 
     const total = await qb.getCount();
     const items = await qb.take(limit).skip((page - 1) * limit).getMany();

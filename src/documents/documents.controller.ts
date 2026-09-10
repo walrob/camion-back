@@ -16,6 +16,7 @@ import {
 import { Response } from 'express';
 import { ApiBearerAuth, ApiConsumes, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { DocumentsService } from './documents.service';
+import { DocumentsExcelService } from './documents-excel.service';
 import { CreateDocumentDto } from './dto/create-document.dto';
 import { UpdateDocumentDto } from './dto/update-document.dto';
 import {
@@ -29,12 +30,16 @@ import { ActiveUser } from 'src/common/decorators/active-user.decorator';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
 import { Feature } from 'src/common/enums/feature.enum';
 import { RequiresFeature } from 'src/auth/decorators/requires-feature.decorator';
+import { ExcelImport, isDryRun, sendXlsx } from 'src/common/excel';
 
 @ApiTags('Documents')
 @ApiBearerAuth()
 @Controller('documents')
 export class DocumentsController {
-  constructor(private readonly documentsService: DocumentsService) {}
+  constructor(
+    private readonly documentsService: DocumentsService,
+    private readonly documentsExcelService: DocumentsExcelService,
+  ) {}
 
   @Post()
   @Auth(Role.ADMIN, Role.MAINTENANCE, Role.DISPATCHER)
@@ -59,6 +64,55 @@ export class DocumentsController {
     @Query('category') category?: DocumentCategory,
   ) {
     return this.documentsService.listByOwner(ownerType, ownerId, category);
+  }
+
+  // Descarga el gestor con los mismos filtros que la tabla (entidad, unidad
+  // y categoria). Es distinto de 'expiring/export', que baja solo lo que vence.
+  @Get('export')
+  @RequiresFeature(Feature.EXPORT_EXCEL)
+  @Auth(Role.ADMIN, Role.MAINTENANCE, Role.DISPATCHER, Role.MANAGER)
+  @ApiQuery({ name: 'ownerType', required: false, enum: DocumentOwnerType })
+  @ApiQuery({ name: 'ownerId', required: false })
+  @ApiQuery({ name: 'category', required: false })
+  async export(
+    @Res({ passthrough: true }) res: Response,
+    @Query('ownerType') ownerType?: DocumentOwnerType,
+    @Query('ownerId') ownerId?: string,
+    @Query('category') category?: string,
+  ): Promise<StreamableFile> {
+    const buffer = await this.documentsExcelService.export({
+      ownerType,
+      ownerId,
+      category,
+    });
+    return sendXlsx(res, 'documentos.xlsx', buffer);
+  }
+
+  @Get('import/template')
+  @Auth(Role.ADMIN, Role.MAINTENANCE, Role.DISPATCHER)
+  async template(
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    return sendXlsx(
+      res,
+      'plantilla-documentos.xlsx',
+      await this.documentsExcelService.template(),
+    );
+  }
+
+  @Post('import')
+  @Auth(Role.ADMIN, Role.MAINTENANCE, Role.DISPATCHER)
+  @ExcelImport()
+  import(
+    @UploadedFile() file: Express.Multer.File,
+    @ActiveUser() user: ActiveUserInterface,
+    @Query('dryRun') dryRun?: string,
+  ) {
+    return this.documentsExcelService.import(
+      file.buffer,
+      user,
+      isDryRun(dryRun),
+    );
   }
 
   @Get('expiring')

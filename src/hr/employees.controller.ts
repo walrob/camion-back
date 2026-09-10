@@ -9,9 +9,14 @@ import {
   Patch,
   Post,
   Query,
+  Res,
+  StreamableFile,
+  UploadedFile,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { EmployeesService } from './employees.service';
+import { HrExcelService } from './hr-excel.service';
 import { CertificationsService } from './certifications.service';
 import { AssignmentsService } from './assignments.service';
 import { EmploymentMovementsService } from './employment-movements.service';
@@ -25,6 +30,7 @@ import { Feature } from 'src/common/enums/feature.enum';
 import { RequiresFeature } from 'src/auth/decorators/requires-feature.decorator';
 import { ActiveUser } from 'src/common/decorators/active-user.decorator';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
+import { ExcelImport, isDryRun, sendXlsx } from 'src/common/excel';
 
 @ApiTags('HR - Employees')
 @ApiBearerAuth()
@@ -36,6 +42,7 @@ export class EmployeesController {
     private readonly certificationsService: CertificationsService,
     private readonly assignmentsService: AssignmentsService,
     private readonly movementsService: EmploymentMovementsService,
+    private readonly hrExcelService: HrExcelService,
   ) {}
 
   @Post()
@@ -74,6 +81,55 @@ export class EmployeesController {
       withoutDriver === 'true',
       sortBy,
       order,
+    );
+  }
+
+  // Descarga el listado con los mismos filtros que la tabla, sin paginar.
+  // Va antes de @Get(':id'): Nest resuelve por orden de declaracion.
+  @Get('export')
+  @RequiresFeature(Feature.EXPORT_EXCEL)
+  @Auth(Role.ADMIN, Role.HR, Role.MANAGER, Role.DISPATCHER)
+  @ApiQuery({ name: 'search', required: false })
+  @ApiQuery({ name: 'position', required: false })
+  @ApiQuery({ name: 'employmentStatus', required: false, enum: EmploymentStatus })
+  async export(
+    @Res({ passthrough: true }) res: Response,
+    @Query('search') search?: string,
+    @Query('position') position?: string,
+    @Query('employmentStatus') employmentStatus?: EmploymentStatus,
+  ): Promise<StreamableFile> {
+    const buffer = await this.hrExcelService.exportEmployees({
+      search,
+      position,
+      employmentStatus,
+    });
+    return sendXlsx(res, 'empleados.xlsx', buffer);
+  }
+
+  @Get('import/template')
+  @Auth(Role.ADMIN, Role.HR)
+  async template(
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    return sendXlsx(
+      res,
+      'plantilla-empleados.xlsx',
+      await this.hrExcelService.employeeTemplate(),
+    );
+  }
+
+  @Post('import')
+  @Auth(Role.ADMIN, Role.HR)
+  @ExcelImport()
+  import(
+    @UploadedFile() file: Express.Multer.File,
+    @ActiveUser() user: ActiveUserInterface,
+    @Query('dryRun') dryRun?: string,
+  ) {
+    return this.hrExcelService.importEmployees(
+      file.buffer,
+      user,
+      isDryRun(dryRun),
     );
   }
 

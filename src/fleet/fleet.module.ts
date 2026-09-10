@@ -6,6 +6,7 @@ import { Fleet } from './entities/fleet.entity';
 import { TrucksService } from './trucks.service';
 import { TrailersService } from './trailers.service';
 import { FleetsService } from './fleets.service';
+import { FleetExcelService } from './fleet-excel.service';
 import { TrucksController } from './trucks.controller';
 import { TrailersController } from './trailers.controller';
 import { FleetsController } from './fleets.controller';
@@ -17,7 +18,7 @@ import { AuthModule } from 'src/auth/auth.module';
     forwardRef(() => AuthModule),
   ],
   controllers: [TrucksController, TrailersController, FleetsController],
-  providers: [TrucksService, TrailersService, FleetsService],
+  providers: [TrucksService, TrailersService, FleetsService, FleetExcelService],
   exports: [TrucksService, TrailersService, FleetsService],
 })
 export class FleetModule {}

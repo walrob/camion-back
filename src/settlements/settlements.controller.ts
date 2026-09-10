@@ -13,6 +13,7 @@ import {
 import { Response } from 'express';
 import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { SettlementsService } from './settlements.service';
+import { sendXlsx } from 'src/common/excel';
 import { SettlementStatus } from 'src/common/enums/settlementStatus.enum';
 import { ReopenDto } from 'src/common/dto/reopen.dto';
 import { Auth } from 'src/auth/decorators/auth.decorator';
@@ -73,6 +74,40 @@ export class SettlementsController {
    * Viajes que se pueden rendir: finalizados y sin liquidación. Va declarada
    * antes de `:id` para que Nest no la tome como un id.
    */
+  // Descarga el listado con los mismos filtros que la tabla, sin paginar.
+  // Va antes de ':id' para que Nest no la tome como un id.
+  @Get('export')
+  @RequiresFeature(Feature.EXPORT_EXCEL)
+  @Auth(Role.ADMIN, Role.MANAGER, Role.AUDITOR)
+  @ApiQuery({ name: 'search', required: false })
+  @ApiQuery({ name: 'status', required: false, enum: SettlementStatus })
+  @ApiQuery({ name: 'driverId', required: false })
+  @ApiQuery({ name: 'from', required: false })
+  @ApiQuery({ name: 'to', required: false })
+  @ApiQuery({ name: 'sortBy', required: false })
+  @ApiQuery({ name: 'order', required: false, enum: ['asc', 'desc'] })
+  async export(
+    @Res({ passthrough: true }) res: Response,
+    @Query('search') search?: string,
+    @Query('status') status?: SettlementStatus,
+    @Query('driverId') driverId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('order') order?: string,
+  ): Promise<StreamableFile> {
+    const buffer = await this.settlementsService.exportXlsx({
+      search,
+      status,
+      driverId,
+      from,
+      to,
+      sortBy,
+      order,
+    });
+    return sendXlsx(res, 'rendiciones.xlsx', buffer);
+  }
+
   @Get('pending-trips')
   @Auth(Role.ADMIN, Role.MANAGER, Role.AUDITOR)
   pendingTrips() {

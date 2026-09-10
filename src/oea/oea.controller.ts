@@ -10,9 +10,13 @@ import {
   Post,
   Put,
   Query,
+  Res,
+  StreamableFile,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { OeaService } from './oea.service';
+import { sendXlsx } from 'src/common/excel';
 import { CreateOeaInspectionDto } from './dto/create-oea-inspection.dto';
 import { UpdateOeaInspectionDto } from './dto/update-oea-inspection.dto';
 import { UpdateOeaItemDto } from './dto/update-oea-item.dto';
@@ -73,6 +77,19 @@ export class OeaController {
   ) {
     limit = limit > 100 ? 100 : limit;
     return this.oeaService.paginate({ page, limit }, filter);
+  }
+
+  // Descarga el listado con los mismos filtros que la tabla, sin paginar.
+  // Va antes de ':id' para que Nest no la tome como un id.
+  @Get('export')
+  @RequiresFeature(Feature.EXPORT_EXCEL)
+  @Auth(Role.ADMIN, Role.MANAGER, Role.DISPATCHER, Role.AUDITOR)
+  async export(
+    @Res({ passthrough: true }) res: Response,
+    @Query() filter: OeaFilterDto,
+  ): Promise<StreamableFile> {
+    const buffer = await this.oeaService.exportXlsx(filter);
+    return sendXlsx(res, 'planillas-oea.xlsx', buffer);
   }
 
   @Get('me')

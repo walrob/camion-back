@@ -12,8 +12,12 @@ import {
   ParseArrayPipe,
   Body,
   Post,
+  Res,
+  StreamableFile,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { UsersService } from './users.service';
+import { sendXlsx } from 'src/common/excel';
 import { Role } from '../common/enums/role.enum';
 import { ApiTags, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { ActiveUser } from 'src/common/decorators/active-user.decorator';
@@ -23,6 +27,8 @@ import { User } from './entities/user.entity';
 import { UploadImage } from 'src/common/decorators/upload-image.decorator';
 import { StorageService } from 'src/common/storage/storage.service';
 import { Auth } from 'src/auth/decorators/auth.decorator';
+import { Feature } from 'src/common/enums/feature.enum';
+import { RequiresFeature } from 'src/auth/decorators/requires-feature.decorator';
 import { UpdateProfileDto } from './dto/update-user.dto';
 
 @ApiTags('Users')
@@ -46,6 +52,21 @@ export class UsersController {
   ): Promise<Pagination<User>> {
     limit = limit > 100 ? 100 : limit;
     return this.usersService.paginate({ page, limit }, search, roles);
+  }
+
+  // Descarga el equipo con el mismo buscador y filtro de rol que la tabla.
+  @Auth(Role.ADMIN, Role.HR, Role.MANAGER)
+  @RequiresFeature(Feature.EXPORT_EXCEL)
+  @Get('export')
+  @ApiQuery({ name: 'search', required: false, type: String })
+  async export(
+    @Res({ passthrough: true }) res: Response,
+    @Query('search') search?: string,
+    @Query('role', new ParseArrayPipe({ items: String, separator: ',', optional: true }))
+    roles?: Role[],
+  ): Promise<StreamableFile> {
+    const buffer = await this.usersService.exportXlsx(search, roles);
+    return sendXlsx(res, 'equipo.xlsx', buffer);
   }
 
   @Auth(Role.ADMIN)

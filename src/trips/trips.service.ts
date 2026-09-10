@@ -8,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { IPaginationOptions, Pagination } from 'nestjs-typeorm-paginate';
 import * as XLSX from 'xlsx';
+import { assertExportSize } from 'src/common/excel';
 import {
   PdfReport,
   dateOnly,
@@ -244,6 +245,10 @@ export class TripsService {
     order?: string;
   }): Promise<Buffer> {
     const trips = await this.filteredTrips(filters);
+    // Tope de filas: sin esto un histórico de años se arma entero en memoria y
+    // tira abajo el proceso. El error le pide al usuario acotar el período, que
+    // es un filtro que la tabla ya tiene.
+    assertExportSize(trips.length);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(
       wb,

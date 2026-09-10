@@ -6,7 +6,9 @@ import { TruckAssignment } from './entities/truck-assignment.entity';
 import { EmploymentMovement } from './entities/employment-movement.entity';
 import { Driver } from 'src/drivers/entities/driver.entity';
 import { Trip } from 'src/trips/entities/trip.entity';
+import { Truck } from 'src/fleet/entities/truck.entity';
 import { EmployeesService } from './employees.service';
+import { HrExcelService } from './hr-excel.service';
 import { CertificationsService } from './certifications.service';
 import { AssignmentsService } from './assignments.service';
 import { EmploymentMovementsService } from './employment-movements.service';
@@ -30,6 +32,8 @@ import { StorageModule } from 'src/common/storage/storage.module';
       // antes de cargarle una licencia, suspensión o baja.
       Driver,
       Trip,
+      // Solo lectura: la carga de asignaciones resuelve la patente al camion.
+      Truck,
     ]),
     forwardRef(() => AuthModule),
     AlertsModule,
@@ -43,6 +47,7 @@ import { StorageModule } from 'src/common/storage/storage.module';
     EmploymentMovementsController,
   ],
   providers: [
+    HrExcelService,
     EmployeesService,
     CertificationsService,
     AssignmentsService,

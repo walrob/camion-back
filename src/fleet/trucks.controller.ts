@@ -9,7 +9,11 @@ import {
   Patch,
   Post,
   Query,
+  Res,
+  StreamableFile,
+  UploadedFile,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { TrucksService } from './trucks.service';
 import { CreateTruckDto } from './dto/create-truck.dto';
@@ -20,12 +24,19 @@ import { Auth } from 'src/auth/decorators/auth.decorator';
 import { Role } from 'src/common/enums/role.enum';
 import { ActiveUser } from 'src/common/decorators/active-user.decorator';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
+import { Feature } from 'src/common/enums/feature.enum';
+import { RequiresFeature } from 'src/auth/decorators/requires-feature.decorator';
+import { FleetExcelService } from './fleet-excel.service';
+import { ExcelImport, isDryRun, sendXlsx } from 'src/common/excel';
 
 @ApiTags('Trucks')
 @ApiBearerAuth()
 @Controller('trucks')
 export class TrucksController {
-  constructor(private readonly trucksService: TrucksService) {}
+  constructor(
+    private readonly trucksService: TrucksService,
+    private readonly fleetExcelService: FleetExcelService,
+  ) {}
 
   @Post()
   @Auth(Role.ADMIN, Role.MANAGER)
@@ -50,6 +61,55 @@ export class TrucksController {
   ) {
     limit = limit > 100 ? 100 : limit;
     return this.trucksService.paginate({ page, limit }, search, status, fleetId);
+  }
+
+  // Descarga el listado con los mismos filtros que la tabla, sin paginar.
+  // Va declarado antes de @Get(':id') porque Nest resuelve por orden y si no
+  // "export" entraria como un id.
+  @Get('export')
+  @RequiresFeature(Feature.EXPORT_EXCEL)
+  @Auth(Role.ADMIN, Role.MANAGER, Role.DISPATCHER, Role.MAINTENANCE)
+  @ApiQuery({ name: 'search', required: false })
+  @ApiQuery({ name: 'status', required: false, enum: TruckStatus })
+  @ApiQuery({ name: 'fleetId', required: false })
+  async export(
+    @Res({ passthrough: true }) res: Response,
+    @Query('search') search?: string,
+    @Query('status') status?: TruckStatus,
+    @Query('fleetId') fleetId?: string,
+  ): Promise<StreamableFile> {
+    const buffer = await this.fleetExcelService.exportTrucks({
+      search,
+      status,
+      fleetId,
+    });
+    return sendXlsx(res, 'camiones.xlsx', buffer);
+  }
+
+  // Planilla vacia con los encabezados que espera la carga.
+  @Get('import/template')
+  @Auth(Role.ADMIN, Role.MANAGER)
+  template(@Res({ passthrough: true }) res: Response): StreamableFile {
+    return sendXlsx(
+      res,
+      'plantilla-camiones.xlsx',
+      this.fleetExcelService.truckTemplate(),
+    );
+  }
+
+  @Post('import')
+  @Auth(Role.ADMIN, Role.MANAGER)
+  @ExcelImport()
+  import(
+    @UploadedFile() file: Express.Multer.File,
+    @ActiveUser() user: ActiveUserInterface,
+    @Query('dryRun') dryRun?: string,
+  ) {
+    return this.fleetExcelService.importTrucks(
+      file.buffer,
+      user,
+      isDryRun(dryRun),
+    );
   }
 
   @Get(':id')
