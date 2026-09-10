@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, IsNull, LessThanOrEqual, Repository } from 'typeorm';
 import { Company } from 'src/companies/entities/company.entity';
@@ -731,6 +736,78 @@ export class BillingService {
       where: { companyId },
       order: { periodStart: 'DESC' },
     });
+  }
+
+  /**
+   * Guarda el comprobante que cargó la administración.
+   *
+   * Recibe la key ya resuelta por el controlador y no el archivo: quién decide
+   * dónde se guarda es el backend, nunca el cliente (mismo criterio que el logo
+   * de la empresa). El período se busca **por id y empresa** para que un id de
+   * otra empresa no se pueda pisar desde el panel.
+   */
+  async guardarComprobante(
+    companyId: string,
+    subscriptionId: string,
+    datos: { invoiceKey: string; invoiceNumber?: string },
+  ): Promise<Subscription> {
+    const sub = await this.subscriptionsRepository.findOne({
+      where: { id: subscriptionId, companyId },
+    });
+    if (!sub) throw new NotFoundException('Período inexistente.');
+
+    sub.invoiceKey = datos.invoiceKey;
+    if (datos.invoiceNumber !== undefined) {
+      sub.invoiceNumber = datos.invoiceNumber || null!;
+    }
+    sub.invoiceUploadedAt = new Date();
+    return this.subscriptionsRepository.save(sub);
+  }
+
+  /**
+   * Quita el comprobante de un período.
+   *
+   * El archivo queda en S3 a propósito: es documentación comercial y borrarla
+   * por una carga equivocada sería irreversible. Lo que se corta es el vínculo,
+   * así que el cliente deja de verlo y se puede volver a cargar el correcto.
+   */
+  async quitarComprobante(
+    companyId: string,
+    subscriptionId: string,
+  ): Promise<Subscription> {
+    const sub = await this.subscriptionsRepository.findOne({
+      where: { id: subscriptionId, companyId },
+    });
+    if (!sub) throw new NotFoundException('Período inexistente.');
+
+    sub.invoiceKey = null!;
+    sub.invoiceNumber = null!;
+    sub.invoiceUploadedAt = null;
+    return this.subscriptionsRepository.save(sub);
+  }
+
+  /**
+   * Key del comprobante de un período de esta empresa.
+   *
+   * Filtra por `companyId` además del id: el endpoint que lo usa lo puede
+   * llamar tanto la empresa como el superadmin, y es el único punto donde se
+   * decide que nadie baje el comprobante de otro.
+   */
+  async keyDelComprobante(
+    companyId: string,
+    subscriptionId: string,
+  ): Promise<{ key: string; nombre: string }> {
+    const sub = await this.subscriptionsRepository.findOne({
+      where: { id: subscriptionId, companyId },
+    });
+    if (!sub) throw new NotFoundException('Período inexistente.');
+    if (!sub.invoiceKey) {
+      throw new NotFoundException('El período todavía no tiene comprobante.');
+    }
+
+    const periodo = String(sub.periodStart).slice(0, 7);
+    const numero = sub.invoiceNumber ? `-${sub.invoiceNumber}` : '';
+    return { key: sub.invoiceKey, nombre: `factura-${periodo}${numero}.pdf` };
   }
 
   /** Marca un período como cobrado. */

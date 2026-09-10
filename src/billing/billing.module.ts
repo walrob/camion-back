@@ -18,6 +18,7 @@ import { DunningService } from './dunning.service';
 import { BillingNotificationsService } from './billing-notifications.service';
 import { AuthModule } from 'src/auth/auth.module';
 import { NotificationsModule } from 'src/notifications/notifications.module';
+import { StorageModule } from 'src/common/storage/storage.module';
 
 /**
  * Facturación: emisión de períodos, prorrateos, add-ons y cambios de plan.
@@ -43,6 +44,8 @@ import { NotificationsModule } from 'src/notifications/notifications.module';
     forwardRef(() => AuthModule),
     // Los avisos de cobranza de la fase 9 (emisión, mora, bloqueo).
     NotificationsModule,
+    // El comprobante de cada período vive en S3.
+    StorageModule,
   ],
   controllers: [BillingController],
   providers: [

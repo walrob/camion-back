@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   Logger,
@@ -14,6 +15,10 @@ import { CompanyStatus } from 'src/common/enums/companyStatus.enum';
 import { Role } from 'src/common/enums/role.enum';
 import { RegisterCompanyDto } from './dto/register-company.dto';
 import { runAsSystem } from 'src/common/tenant/tenant-context';
+import {
+  TAX_CONDITION_LABELS,
+  TaxCondition,
+} from 'src/common/enums/taxCondition.enum';
 
 /**
  * Días de prueba gratuita.
@@ -200,10 +205,26 @@ export class CompaniesService {
       'invoiceEmail',
       'invoiceCuit',
       'invoiceName',
+      'invoiceTaxCondition',
+      'invoiceAddress',
       'logoUrl',
       'primaryColor',
       'onboardingStep',
     ];
+
+    // `PATCH me` recibe un `Partial<Company>` sin DTO, así que la condición
+    // frente al IVA se valida acá: es el dato que decide si corresponde factura
+    // A o B, y un valor libre haría que la administración emita mal.
+    if (datos.invoiceTaxCondition) {
+      const validas = Object.values(TaxCondition) as string[];
+      if (!validas.includes(datos.invoiceTaxCondition)) {
+        throw new BadRequestException(
+          'Condición frente al IVA inválida. Opciones: ' +
+            Object.values(TAX_CONDITION_LABELS).join(', ') +
+            '.',
+        );
+      }
+    }
 
     for (const campo of permitidos) {
       if (datos[campo] !== undefined) {

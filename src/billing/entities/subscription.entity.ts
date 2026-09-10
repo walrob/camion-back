@@ -112,9 +112,22 @@ export class Subscription extends TenantEntity {
   @Column({ type: 'date', nullable: true })
   paidAt: Date | null;
 
-  /** Comprobante en S3. */
+  /**
+   * Key del comprobante en S3, no una URL: el bucket no es público y el archivo
+   * se sirve por endpoint propio, que además verifica que quien lo pide sea la
+   * empresa dueña del período.
+   *
+   * Lo carga el superadmin: el sistema registra el cobro, no emite la factura.
+   */
   @Column({ nullable: true })
-  invoiceUrl: string;
+  invoiceKey: string;
+
+  /** Número del comprobante, que es por dónde el cliente lo reclama. */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  invoiceNumber: string;
+
+  @Column({ type: 'datetime', precision: 6, nullable: true })
+  invoiceUploadedAt: Date | null;
 
   /**
    * Cargo prorrateado por un cambio a mitad de período (más vehículos, upgrade

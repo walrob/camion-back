@@ -6,8 +6,12 @@ import {
   Param,
   Post,
   Query,
+  Res,
+  StreamableFile,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { StorageService } from 'src/common/storage/storage.service';
 import { Auth } from 'src/auth/decorators/auth.decorator';
 import { Role } from 'src/common/enums/role.enum';
 import { ActiveUser } from 'src/common/decorators/active-user.decorator';
@@ -18,7 +22,10 @@ import { BillingService } from './billing.service';
 @ApiBearerAuth()
 @Controller('billing')
 export class BillingController {
-  constructor(private readonly billing: BillingService) {}
+  constructor(
+    private readonly billing: BillingService,
+    private readonly storage: StorageService,
+  ) {}
 
   @Get('quote')
   @Auth(Role.ADMIN, Role.MANAGER)
@@ -34,6 +41,33 @@ export class BillingController {
   @ApiOperation({ summary: 'Períodos facturados de la empresa.' })
   periodos(@ActiveUser() user: ActiveUserInterface) {
     return this.billing.listarPeriodos(user.companyId);
+  }
+
+  /**
+   * Comprobante de un período, para el cliente.
+   *
+   * Se sirve el archivo y no una URL firmada de S3, igual que el PDF de la
+   * rendición: el bucket no es público y una URL firmada que se filtra sigue
+   * siendo válida hasta que expira. Acá cada descarga vuelve a pasar por el
+   * chequeo de que el período sea de esta empresa.
+   */
+  @Get('subscriptions/:id/invoice')
+  @Auth(Role.ADMIN, Role.MANAGER, Role.AUDITOR)
+  @ApiOperation({ summary: 'Descarga el comprobante del período.' })
+  async comprobante(
+    @Param('id') id: string,
+    @ActiveUser() user: ActiveUserInterface,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    const { key, nombre } = await this.billing.keyDelComprobante(
+      user.companyId,
+      id,
+    );
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${nombre}"`,
+    });
+    return this.storage.getFileStream(key);
   }
 
   @Post('plan')

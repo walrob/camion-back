@@ -18,6 +18,15 @@ export const AUDIT = {
   COMPANY_ADDON_ADDED: 'company.addon_added',
   COMPANY_ADDON_REMOVED: 'company.addon_removed',
   BILLING_PERIOD_ISSUED: 'billing.period_issued',
+  /**
+   * Carga y baja del comprobante de un período.
+   *
+   * Se auditan las dos porque el comprobante es documentación fiscal del
+   * cliente: hay que poder decir quién subió qué archivo y cuándo, y sobre todo
+   * quién lo dio de baja.
+   */
+  BILLING_INVOICE_UPLOADED: 'billing.invoice_uploaded',
+  BILLING_INVOICE_REMOVED: 'billing.invoice_removed',
   BILLING_PAYMENT_REGISTERED: 'billing.payment_registered',
   /** Ciclo de mora (fase 9). El actor es el cron: se registra sin usuario. */
   BILLING_COMPANY_DEFAULTED: 'billing.company_defaulted',

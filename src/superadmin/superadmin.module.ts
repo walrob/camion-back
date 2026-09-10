@@ -7,6 +7,7 @@ import { AuthModule } from 'src/auth/auth.module';
 import { BillingModule } from 'src/billing/billing.module';
 import { MpWebhookEvent } from 'src/billing/entities/mp-webhook-event.entity';
 import { WebhooksModule } from 'src/webhooks/webhooks.module';
+import { StorageModule } from 'src/common/storage/storage.module';
 import { SuperadminService } from './superadmin.service';
 import { SuperadminController } from './superadmin.controller';
 import { ImpersonationService } from './impersonation.service';
@@ -23,6 +24,8 @@ import { SuperadminSeeder } from './superadmin.seeder';
 @Module({
   imports: [
     TypeOrmModule.forFeature([Company, Plan, User, MpWebhookEvent]),
+    // El comprobante de cada periodo se sube a S3 desde el panel.
+    StorageModule,
     forwardRef(() => AuthModule),
     BillingModule,
     // Reproceso de un aviso de MP que falló, desde el panel.

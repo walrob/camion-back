@@ -146,6 +146,21 @@ export class Company {
   @Column({ nullable: true })
   invoiceName: string;
 
+  /**
+   * Condición frente al IVA (`TaxCondition`). Decide si corresponde factura A
+   * o B, así que sin esto la administración no puede emitir el comprobante.
+   *
+   * Es `varchar` y no enum de base: las categorías de AFIP cambian y un
+   * `MODIFY enum` sobre la tabla de facturación no vale la pena. Lo valida el
+   * DTO.
+   */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  invoiceTaxCondition: string;
+
+  /** Domicilio fiscal, que puede no ser el operativo (`address`). */
+  @Column({ nullable: true })
+  invoiceAddress: string;
+
   /** Día del mes en que se emite el período facturable. */
   @Column('int', { default: 1 })
   billingDay: number;

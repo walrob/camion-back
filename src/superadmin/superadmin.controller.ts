@@ -1,13 +1,19 @@
 import {
+  BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
   Post,
   Query,
   Req,
+  Res,
+  StreamableFile,
+  UploadedFile,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Auth } from 'src/auth/decorators/auth.decorator';
 import { Role } from 'src/common/enums/role.enum';
@@ -19,6 +25,10 @@ import { AUDIT, AuditLogService } from 'src/audit-log/audit-log.service';
 import { SuperadminService } from './superadmin.service';
 import { ImpersonationService } from './impersonation.service';
 import { WebhooksService } from 'src/webhooks/webhooks.service';
+import { BillingService } from 'src/billing/billing.service';
+import { StorageService } from 'src/common/storage/storage.service';
+import { UploadFile } from 'src/common/decorators/upload-file.decorator';
+import { ApiConsumes, ApiBody } from '@nestjs/swagger';
 
 /**
  * Panel de operación de la plataforma.
@@ -40,6 +50,8 @@ export class SuperadminController {
     private readonly impersonation: ImpersonationService,
     private readonly auditLog: AuditLogService,
     private readonly webhooks: WebhooksService,
+    private readonly billing: BillingService,
+    private readonly storage: StorageService,
   ) {}
 
   // ── Tablero y consultas ──────────────────────────────────────────────────
@@ -306,7 +318,128 @@ export class SuperadminController {
     return sub ?? { message: 'El período ya estaba emitido.' };
   }
 
-  // ── Catálogo ─────────────────────────────────────────────────────────────
+  /**
+   * Sube el comprobante de un período.
+   *
+   * El sistema **no emite** la factura: la administración la hace por fuera
+   * —AFIP, el estudio contable— y la sube acá contra los datos de facturación
+   * que la empresa declaró en su pantalla de plan. Es el paso que le permite al
+   * cliente bajarse el comprobante sin pedirlo por mail.
+   *
+   * La `key` de S3 la resuelve el backend, nunca el cliente. El tipo se valida
+   * acá: un archivo que no es PDF quedaría cargado y sin poder abrirse.
+   */
+  @Post('companies/:id/billing/:subscriptionId/invoice')
+  @UploadFile('file', 15)
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', format: 'binary' },
+        invoiceNumber: { type: 'string' },
+      },
+    },
+  })
+  @ApiOperation({ summary: 'Sube el comprobante (PDF) de un período.' })
+  async subirComprobante(
+    @Param('id') id: string,
+    @Param('subscriptionId') subscriptionId: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('invoiceNumber') invoiceNumber: string | undefined,
+    @ActiveUser() user: ActiveUserInterface,
+    @Req() req: Request,
+  ) {
+    if (!file) throw new BadRequestException('No se recibió ningún archivo.');
+    if (file.mimetype !== 'application/pdf') {
+      throw new BadRequestException('El comprobante tiene que ser un PDF.');
+    }
+
+    const invoiceKey = await this.storage.uploadFile(file, 'invoices');
+    const sub = await this.billing.guardarComprobante(id, subscriptionId, {
+      invoiceKey,
+      invoiceNumber,
+    });
+
+    await this.auditLog.registrar(
+      user,
+      {
+        action: AUDIT.BILLING_INVOICE_UPLOADED,
+        companyId: id,
+        entityType: 'subscription',
+        entityId: sub.id,
+        metadata: {
+          invoiceNumber: sub.invoiceNumber ?? null,
+          periodStart: sub.periodStart,
+          bytes: file.size,
+        },
+      },
+      req as never,
+    );
+
+    return sub;
+  }
+
+  /**
+   * Descarga el comprobante ya cargado, para verificar qué se subió.
+   *
+   * Pasa por el mismo método que la descarga del cliente, así que el chequeo de
+   * que el período sea de esa empresa está en un solo lugar.
+   */
+  @Get('companies/:id/billing/:subscriptionId/invoice')
+  @ApiOperation({ summary: 'Descarga el comprobante de un período.' })
+  async verComprobante(
+    @Param('id') id: string,
+    @Param('subscriptionId') subscriptionId: string,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    const { key, nombre } = await this.billing.keyDelComprobante(
+      id,
+      subscriptionId,
+    );
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${nombre}"`,
+    });
+    return this.storage.getFileStream(key);
+  }
+
+  /**
+   * Da de baja el comprobante de un período (una carga equivocada).
+   *
+   * El archivo **queda en S3**: es documentación comercial y borrarla sería
+   * irreversible. Lo que se corta es el vínculo, así que el cliente deja de
+   * verlo y se puede subir el correcto.
+   */
+  @Delete('companies/:id/billing/:subscriptionId/invoice')
+  @ApiOperation({ summary: 'Quita el comprobante de un período.' })
+  async quitarComprobante(
+    @Param('id') id: string,
+    @Param('subscriptionId') subscriptionId: string,
+    @ActiveUser() user: ActiveUserInterface,
+    @Req() req: Request,
+  ) {
+    const previo = await this.billing.keyDelComprobante(id, subscriptionId);
+    const sub = await this.billing.quitarComprobante(id, subscriptionId);
+
+    await this.auditLog.registrar(
+      user,
+      {
+        action: AUDIT.BILLING_INVOICE_REMOVED,
+        companyId: id,
+        entityType: 'subscription',
+        entityId: sub.id,
+        // Se deja la key en la bitácora: el archivo sigue en S3 y esto es lo
+        // único que permite recuperarlo si la baja fue un error.
+        metadata: { key: previo.key },
+      },
+      req as never,
+    );
+
+    return sub;
+  }
+
+  // ── Catálogo ─────────────────────────────────────────────────────────────  // ── Catálogo ─────────────────────────────────────────────────────────────
 
   @Patch('plans/:code')
   @ApiOperation({
