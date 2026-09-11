@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, SelectQueryBuilder } from 'typeorm';
 import { IPaginationOptions, Pagination } from 'nestjs-typeorm-paginate';
 import * as XLSX from 'xlsx';
 import { assertExportSize } from 'src/common/excel';
@@ -152,6 +152,8 @@ export class TripsService {
       to?: string;
       sortBy?: string;
       order?: string;
+      /** Sólo los demorados: en curso y con la llegada planificada ya pasada. */
+      delayed?: boolean;
     },
   ): Promise<Pagination<Trip>> {
     const { orderBy, order } = resolveSort(
@@ -177,6 +179,9 @@ export class TripsService {
         ...(filters.truckId && { truckId: filters.truckId }),
         ...(filters.driverId && { driverId: filters.driverId }),
       },
+      extraWhere: filters.delayed
+        ? (qb) => this.soloDemorados(qb, 'entity')
+        : undefined,
     });
   }
 
@@ -196,6 +201,18 @@ export class TripsService {
     return emp ? `${emp.firstName} ${emp.lastName}` : '-';
   }
 
+  /**
+   * Mismo criterio que el contador «viajes demorados» del panel
+   * (`DashboardService.delayedTrips`): si cambia uno, cambia el otro.
+   */
+  private soloDemorados(qb: SelectQueryBuilder<Trip>, alias: string) {
+    qb.andWhere(`${alias}.status = :demoradoStatus`, {
+      demoradoStatus: TripStatus.IN_PROGRESS,
+    })
+      .andWhere(`${alias}.plannedEndAt IS NOT NULL`)
+      .andWhere(`${alias}.plannedEndAt < :ahora`, { ahora: new Date() });
+  }
+
   /** Listado completo (sin paginar) que respeta los mismos filtros del listado. */
   private filteredTrips(filters: {
     search?: string;
@@ -206,6 +223,7 @@ export class TripsService {
     to?: string;
     sortBy?: string;
     order?: string;
+    delayed?: boolean;
   }): Promise<Trip[]> {
     const { orderBy, order } = resolveSort(
       filters.sortBy,
@@ -221,6 +239,7 @@ export class TripsService {
       .leftJoinAndSelect('driver.employee', 'employee');
 
     if (filters.status) qb.andWhere('trip.status = :status', { status: filters.status });
+    if (filters.delayed) this.soloDemorados(qb, 'trip');
     if (filters.truckId) qb.andWhere('trip.truckId = :truckId', { truckId: filters.truckId });
     if (filters.driverId) qb.andWhere('trip.driverId = :driverId', { driverId: filters.driverId });
     if (filters.from) qb.andWhere('trip.plannedStartAt >= :from', { from: filters.from });
@@ -243,6 +262,7 @@ export class TripsService {
     to?: string;
     sortBy?: string;
     order?: string;
+    delayed?: boolean;
   }): Promise<Buffer> {
     const trips = await this.filteredTrips(filters);
     // Tope de filas: sin esto un histórico de años se arma entero en memoria y

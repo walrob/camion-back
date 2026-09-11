@@ -79,7 +79,7 @@ describe('Excel: ida y vuelta entre exportación e importación', () => {
     svc(),
     catalogs(),
   );
-  const drivers = new DriversExcelService(repo(), repo());
+  const drivers = new DriversExcelService(repo(), repo(), svc());
   const documents = new DocumentsExcelService(
     repo(),
     repo(),

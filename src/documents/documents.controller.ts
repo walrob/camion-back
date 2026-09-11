@@ -1,7 +1,6 @@
 import {
   Body,
   Controller,
-  DefaultValuePipe,
   Delete,
   Get,
   Param,
@@ -117,8 +116,17 @@ export class DocumentsController {
 
   @Get('expiring')
   @Auth(Role.ADMIN, Role.MAINTENANCE, Role.DISPATCHER, Role.MANAGER)
-  @ApiQuery({ name: 'days', required: false, type: Number })
-  expiring(@Query('days', new DefaultValuePipe(30), ParseIntPipe) days = 30) {
+  @ApiQuery({
+    name: 'days',
+    required: false,
+    type: Number,
+    description:
+      'Sin días: la bandeja (vencidos y por vencer según la ventana de la ' +
+      'empresa). Con días: todo lo que vence de acá a N días.',
+  })
+  expiring(
+    @Query('days', new ParseIntPipe({ optional: true })) days?: number,
+  ) {
     return this.documentsService.expiring(days);
   }
 
@@ -130,7 +138,7 @@ export class DocumentsController {
   @ApiQuery({ name: 'days', required: false, type: Number })
   async exportExpiring(
     @Res({ passthrough: true }) res: Response,
-    @Query('days', new DefaultValuePipe(30), ParseIntPipe) days = 30,
+    @Query('days', new ParseIntPipe({ optional: true })) days?: number,
   ): Promise<StreamableFile> {
     const buffer = await this.documentsService.exportExpiringXlsx(days);
     res.set({

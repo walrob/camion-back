@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, Repository, SelectQueryBuilder } from 'typeorm';
 import { IPaginationOptions, Pagination } from 'nestjs-typeorm-paginate';
 import { Driver } from './entities/driver.entity';
 import { Employee } from 'src/hr/entities/employee.entity';
@@ -14,6 +14,9 @@ import { DriverStatus } from 'src/common/enums/driverStatus.enum';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
 import { paginateAndSearch } from 'src/common/utils/paginate-and-search.util';
 import { resolveSort } from 'src/common/utils/resolve-sort.util';
+import { Incident } from 'src/incidents/entities/incident.entity';
+import { IncidentStatus } from 'src/common/enums/incident.enum';
+import { getCurrentCompanyId } from 'src/common/tenant/tenant-context';
 
 // Columnas ordenables (clave del front → columna/alias real).
 const DRIVER_SORTABLE: Record<string, string> = {
@@ -77,6 +80,8 @@ export class DriversService {
     status?: DriverStatus,
     sortBy?: string,
     order?: string,
+    /** Sólo los que tienen un incidente sin resolver (el corte del panel). */
+    withNews = false,
   ): Promise<Pagination<Driver>> {
     const sort = resolveSort(sortBy, order, DRIVER_SORTABLE, {
       orderBy: 'employee.lastName',
@@ -99,7 +104,36 @@ export class DriversService {
       baseWhere: {
         ...(status && { status }),
       },
+      extraWhere: withNews
+        ? (qb) => this.soloConNovedades(qb, 'entity')
+        : undefined,
     });
+  }
+
+  /**
+   * Acota a los choferes con algún incidente sin resolver: el corte «con
+   * novedades» del panel (`DashboardService.driversWithNews`; si cambia uno,
+   * cambia el otro). El subquery no pasa por el repositorio de incidentes, así
+   * que la empresa se acota a mano.
+   */
+  private soloConNovedades(qb: SelectQueryBuilder<Driver>, alias: string) {
+    qb.andWhere(
+      `${alias}.id IN ${qb
+        .subQuery()
+        .select('i.driverId')
+        .from(Incident, 'i')
+        .where('i.status != :resolved')
+        .andWhere('i.companyId = :companyId')
+        .getQuery()}`,
+      { resolved: IncidentStatus.RESOLVED, companyId: getCurrentCompanyId() },
+    );
+  }
+
+  /** Ids de los choferes con novedades, para que el Excel traiga las mismas filas que la tabla. */
+  async idsConNovedades(): Promise<string[]> {
+    const qb = this.driversRepository.createQueryBuilder('d').select('d.id');
+    this.soloConNovedades(qb, 'd');
+    return (await qb.getMany()).map((d) => d.id);
   }
 
   async findOne(id: string): Promise<Driver> {

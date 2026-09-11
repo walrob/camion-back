@@ -19,6 +19,7 @@ export async function paginateAndSearch<T extends ObjectLiteral>(
     dateField = 'createdAt',
     relations = [],
     select,
+    extraWhere,
   } = dto;
 
   const qb = repository.createQueryBuilder('entity');
@@ -55,6 +56,8 @@ export async function paginateAndSearch<T extends ObjectLiteral>(
       }
     });
   }
+
+  if (extraWhere) extraWhere(qb);
 
   // 📅 Filtro por fechas (DATE o TIMESTAMP)
   if (from && to) {

@@ -10,6 +10,7 @@ import {
   IsDate,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import type { SelectQueryBuilder } from 'typeorm';
 
 export class PaginateAndSearchDto {
   @IsNumber()
@@ -60,4 +61,12 @@ export class PaginateAndSearchDto {
   @IsArray()
   @IsString({ each: true })
   select?: string[];
+
+  /**
+   * Condiciones que no entran en `baseWhere` (igualdad por columna): un
+   * subquery, una comparación con la fecha de hoy, etc. El alias raíz es
+   * `entity`.
+   */
+  @IsOptional()
+  extraWhere?: (qb: SelectQueryBuilder<any>) => void;
 }

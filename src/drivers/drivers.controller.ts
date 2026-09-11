@@ -52,12 +52,18 @@ export class DriversController {
   @Auth(Role.ADMIN, Role.DISPATCHER, Role.MANAGER, Role.HR)
   @ApiQuery({ name: 'search', required: false })
   @ApiQuery({ name: 'status', required: false, enum: DriverStatus })
+  @ApiQuery({ name: 'withNews', required: false })
   async export(
     @Res({ passthrough: true }) res: Response,
     @Query('search') search?: string,
     @Query('status') status?: DriverStatus,
+    @Query('withNews') withNews?: string,
   ): Promise<StreamableFile> {
-    const buffer = await this.driversExcelService.export({ search, status });
+    const buffer = await this.driversExcelService.export({
+      search,
+      status,
+      withNews: withNews === 'true',
+    });
     return sendXlsx(res, 'choferes.xlsx', buffer);
   }
 
@@ -98,6 +104,12 @@ export class DriversController {
   @ApiQuery({ name: 'status', required: false, enum: DriverStatus })
   @ApiQuery({ name: 'sortBy', required: false })
   @ApiQuery({ name: 'order', required: false, enum: ['asc', 'desc'] })
+  @ApiQuery({
+    name: 'withNews',
+    required: false,
+    description:
+      'true = sólo choferes con incidentes sin resolver, el mismo corte del panel.',
+  })
   findPagination(
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page = 1,
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit = 10,
@@ -105,6 +117,7 @@ export class DriversController {
     @Query('status') status?: DriverStatus,
     @Query('sortBy') sortBy?: string,
     @Query('order') order?: string,
+    @Query('withNews') withNews?: string,
   ) {
     limit = limit > 100 ? 100 : limit;
     return this.driversService.paginate(
@@ -113,6 +126,7 @@ export class DriversController {
       status,
       sortBy,
       order,
+      withNews === 'true',
     );
   }
 

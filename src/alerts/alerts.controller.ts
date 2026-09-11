@@ -27,7 +27,12 @@ export class AlertsController {
   @Get()
   @Auth(Role.ADMIN, Role.MANAGER, Role.DISPATCHER, Role.HR)
   @ApiQuery({ name: 'level', required: false, enum: AlertLevel })
-  @ApiQuery({ name: 'status', required: false, enum: AlertStatus })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: [...Object.values(AlertStatus), 'active'],
+    description: '`active` = todas las no resueltas, el mismo corte del panel.',
+  })
   @ApiQuery({
     name: 'from',
     required: false,
@@ -40,7 +45,7 @@ export class AlertsController {
   })
   list(
     @Query('level') level?: AlertLevel,
-    @Query('status') status?: AlertStatus,
+    @Query('status') status?: AlertStatus | 'active',
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {

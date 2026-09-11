@@ -57,6 +57,12 @@ export class TripsController {
   })
   @ApiQuery({ name: 'sortBy', required: false })
   @ApiQuery({ name: 'order', required: false, enum: ['asc', 'desc'] })
+  @ApiQuery({
+    name: 'delayed',
+    required: false,
+    description:
+      'true = sólo demorados (en curso con llegada planificada vencida), el mismo corte del panel.',
+  })
   findPagination(
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page = 1,
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit = 10,
@@ -68,11 +74,22 @@ export class TripsController {
     @Query('to') to?: string,
     @Query('sortBy') sortBy?: string,
     @Query('order') order?: string,
+    @Query('delayed') delayed?: string,
   ) {
     limit = limit > 100 ? 100 : limit;
     return this.tripsService.paginate(
       { page, limit },
-      { search, status, truckId, driverId, from, to, sortBy, order },
+      {
+        search,
+        status,
+        truckId,
+        driverId,
+        from,
+        to,
+        sortBy,
+        order,
+        delayed: delayed === 'true',
+      },
     );
   }
 
@@ -97,6 +114,7 @@ export class TripsController {
     @Query('to') to?: string,
     @Query('sortBy') sortBy?: string,
     @Query('order') order?: string,
+    @Query('delayed') delayed?: string,
   ): Promise<StreamableFile> {
     const buffer = await this.tripsService.exportXlsx({
       search,
@@ -107,6 +125,7 @@ export class TripsController {
       to,
       sortBy,
       order,
+      delayed: delayed === 'true',
     });
     res.set({
       'Content-Type':

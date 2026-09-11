@@ -289,14 +289,18 @@ export class AlertsService {
   // ───────── Consulta y estado ─────────
   list(filters: {
     level?: AlertLevel;
-    status?: AlertStatus;
+    /** Un estado, o `active` = todo lo no resuelto (el corte del panel). */
+    status?: AlertStatus | 'active';
     from?: string;
     to?: string;
   }): Promise<Alert[]> {
     const qb = this.alertsRepository.createQueryBuilder('a');
     if (filters.level) qb.andWhere('a.level = :level', { level: filters.level });
-    if (filters.status)
+    if (filters.status === 'active') {
+      qb.andWhere('a.status != :resolved', { resolved: AlertStatus.RESOLVED });
+    } else if (filters.status) {
       qb.andWhere('a.status = :status', { status: filters.status });
+    }
     if (filters.from) qb.andWhere('a.createdAt >= :from', { from: filters.from });
     if (filters.to)
       qb.andWhere('a.createdAt < :to', { to: this.addOneDay(filters.to) });

@@ -57,6 +57,8 @@ export class ImpersonationService {
     expiresAt: Date;
     company: { id: string; name: string };
     comoUsuario: string;
+    /** Lo que el front necesita para abrir la sesión como si fuera un login. */
+    user: { id: string; email: string; name: string; role: string };
   }> {
     return runAsSystem(async () => {
       const company = await this.companiesRepository.findOne({
@@ -96,6 +98,12 @@ export class ImpersonationService {
         expiresAt,
         company: { id: company.id, name: company.name },
         comoUsuario: admin.email,
+        user: {
+          id: admin.id,
+          email: admin.email,
+          name: admin.name,
+          role: admin.role,
+        },
       };
     });
   }

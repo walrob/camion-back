@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, ILike, Repository } from 'typeorm';
+import { FindOptionsWhere, ILike, In, Repository } from 'typeorm';
 import { Driver } from './entities/driver.entity';
 import { Employee } from 'src/hr/entities/employee.entity';
 import { DriverStatus } from 'src/common/enums/driverStatus.enum';
+import { DriversService } from './drivers.service';
 import { EmployeePosition } from 'src/common/enums/employeePosition.enum';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
 import {
@@ -28,6 +29,8 @@ const DRIVER_STATUS_LABELS: Record<DriverStatus, string> = {
 export interface DriverExportFilters {
   search?: string;
   status?: DriverStatus;
+  /** Sólo los que tienen un incidente sin resolver (el corte del panel). */
+  withNews?: boolean;
 }
 
 @Injectable()
@@ -37,6 +40,7 @@ export class DriversExcelService {
     private readonly driversRepository: Repository<Driver>,
     @InjectRepository(Employee)
     private readonly employeesRepository: Repository<Employee>,
+    private readonly driversService: DriversService,
   ) {}
 
   private columns(): ImportColumn[] {
@@ -115,9 +119,13 @@ export class DriversExcelService {
    * arma sobre la relación para que el Excel traiga las mismas filas que la
    * tabla.
    */
-  private where(filters: DriverExportFilters): FindOptionsWhere<Driver>[] {
+  private where(
+    filters: DriverExportFilters,
+    ids?: string[],
+  ): FindOptionsWhere<Driver>[] {
     const base: FindOptionsWhere<Driver> = {
       ...(filters.status && { status: filters.status }),
+      ...(ids && { id: In(ids) }),
     };
     if (!filters.search) return [base];
     const like = ILike(`%${filters.search}%`);
@@ -130,7 +138,15 @@ export class DriversExcelService {
   }
 
   async export(filters: DriverExportFilters): Promise<Buffer> {
-    const where = this.where(filters);
+    // Sin novedades, `IN ()` no es S'L válido: se pide un id que no existe y el
+    // Excel sale vacío, que es lo que muestra la tabla.
+    const NINGUNO = '00000000-0000-0000-0000-000000000000';
+    let ids: string[] | undefined;
+    if (filters.withNews) {
+      ids = await this.driversService.idsConNovedades();
+      if (!ids.length) ids = [NINGUNO];
+    }
+    const where = this.where(filters, ids);
     assertExportSize(await this.driversRepository.count({ where }));
 
     const drivers = await this.driversRepository.find({

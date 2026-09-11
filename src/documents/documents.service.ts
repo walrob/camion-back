@@ -174,15 +174,21 @@ export class DocumentsService {
     });
   }
 
+  /**
+   * Sin `days` es la bandeja de vencimientos: lo que ya venció o está por
+   * vencer según la ventana que configuró la empresa. Con `days` explícito es
+   * "todo lo que vence de acá a N días", tenga el estado que tenga: así el
+   * panel puede abrir el corte "31 a 90 días" aunque la ventana de aviso sea
+   * de 30.
+   */
   async expiring(days?: number): Promise<Array<Document & { owner: DocumentOwner }>> {
-    // Sin parámetro se usa la ventana que configuró la empresa, no un 30 fijo.
     const dias = days ?? (await this.ventanaDeAviso());
     const limit = new Date();
     limit.setDate(limit.getDate() + dias);
     const docs = await this.documentsRepository.find({
       where: {
         expiryDate: LessThanOrEqual(limit.toISOString().slice(0, 10)),
-        status: Not(DocumentStatus.VALID),
+        ...(days === undefined && { status: Not(DocumentStatus.VALID) }),
       },
       order: { expiryDate: 'ASC' },
     });
