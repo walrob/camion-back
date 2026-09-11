@@ -3,6 +3,7 @@ import { BadRequestException, ConflictException } from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { EmployeesService } from './employees.service';
 import { Employee } from './entities/employee.entity';
+import { Driver } from 'src/drivers/entities/driver.entity';
 import { UsersService } from 'src/users/users.service';
 import { EmploymentMovementsService } from './employment-movements.service';
 import { EmployeePosition } from 'src/common/enums/employeePosition.enum';
@@ -15,6 +16,13 @@ const activeUser = { id: 'admin-1', companyId: 'company-test', role: 'admin' };
 describe('EmployeesService.create (alta con cuenta opcional)', () => {
   let service: EmployeesService;
   let employeesRepo: { findOne: jest.Mock; create: jest.Mock; save: jest.Mock };
+  let driversRepo: {
+    findOne: jest.Mock;
+    create: jest.Mock;
+    save: jest.Mock;
+    restore: jest.Mock;
+    update: jest.Mock;
+  };
   let usersService: { findOneByEmail: jest.Mock; create: jest.Mock };
   let movementsService: { create: jest.Mock };
 
@@ -23,6 +31,13 @@ describe('EmployeesService.create (alta con cuenta opcional)', () => {
       findOne: jest.fn().mockResolvedValue(null), // documento disponible
       create: jest.fn().mockImplementation((e) => e),
       save: jest.fn().mockImplementation(async (e) => ({ id: 'emp-1', ...e })),
+    };
+    driversRepo = {
+      findOne: jest.fn().mockResolvedValue(null), // sin perfil previo
+      create: jest.fn().mockImplementation((d) => d),
+      save: jest.fn().mockImplementation(async (d) => ({ id: 'drv-1', ...d })),
+      restore: jest.fn().mockResolvedValue(undefined),
+      update: jest.fn().mockResolvedValue(undefined),
     };
     usersService = {
       findOneByEmail: jest.fn().mockResolvedValue(null),
@@ -34,6 +49,7 @@ describe('EmployeesService.create (alta con cuenta opcional)', () => {
       providers: [
         EmployeesService,
         { provide: getRepositoryToken(Employee), useValue: employeesRepo },
+        { provide: getRepositoryToken(Driver), useValue: driversRepo },
         { provide: UsersService, useValue: usersService },
         {
           provide: EmploymentMovementsService,
@@ -152,5 +168,117 @@ describe('EmployeesService.create (alta con cuenta opcional)', () => {
   it('no genera movimiento si el alta no trae fecha de ingreso', async () => {
     await service.create({ ...base }, activeUser);
     expect(movementsService.create).not.toHaveBeenCalled();
+  });
+
+  // Un puesto que entra a la app como Chofer trae su perfil operativo (Driver)
+  // sin pasar por /admin/choferes.
+  it('crea el perfil de chofer al dar de alta un empleado con puesto Chofer', async () => {
+    await service.create(
+      { ...base, position: EmployeePosition.DRIVER },
+      activeUser,
+    );
+    expect(driversRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        employeeId: 'emp-1',
+        status: 'active',
+        createdBy: 'admin-1',
+      }),
+    );
+  });
+
+  it('no crea perfil de chofer para otros puestos ni sin puesto', async () => {
+    await service.create(
+      { ...base, position: EmployeePosition.MECHANIC },
+      activeUser,
+    );
+    await service.create({ ...base }, activeUser);
+    expect(driversRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('restaura el perfil de chofer si estaba dado de baja', async () => {
+    driversRepo.findOne.mockResolvedValue({
+      id: 'drv-old',
+      employeeId: 'emp-1',
+      deletedAt: new Date(),
+    });
+    await service.create(
+      { ...base, position: EmployeePosition.DRIVER },
+      activeUser,
+    );
+    expect(driversRepo.restore).toHaveBeenCalledWith('drv-old');
+    expect(driversRepo.save).not.toHaveBeenCalled();
+  });
+});
+
+describe('EmployeesService.update (cambio de puesto)', () => {
+  let service: EmployeesService;
+  let employeesRepo: { findOne: jest.Mock; save: jest.Mock };
+  let driversRepo: { findOne: jest.Mock; create: jest.Mock; save: jest.Mock };
+
+  const existing = {
+    id: 'emp-1',
+    firstName: 'Juan',
+    lastName: 'Gómez',
+    documentId: '30123456',
+    position: EmployeePosition.MECHANIC,
+  };
+
+  beforeEach(async () => {
+    employeesRepo = {
+      findOne: jest.fn().mockResolvedValue({ ...existing }),
+      save: jest.fn().mockImplementation(async (e) => e),
+    };
+    driversRepo = {
+      findOne: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockImplementation((d) => d),
+      save: jest.fn().mockImplementation(async (d) => ({ id: 'drv-1', ...d })),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        EmployeesService,
+        { provide: getRepositoryToken(Employee), useValue: employeesRepo },
+        { provide: getRepositoryToken(Driver), useValue: driversRepo },
+        { provide: UsersService, useValue: {} },
+        { provide: EmploymentMovementsService, useValue: {} },
+        {
+          provide: CatalogsService,
+          useValue: {
+            rolDePuesto: jest.fn(async (p?: string) =>
+              p === 'mechanic' ? 'maintenance' : 'driver',
+            ),
+          },
+        },
+      ],
+    }).compile();
+
+    service = module.get(EmployeesService);
+  });
+
+  it('crea el perfil de chofer cuando el empleado pasa a puesto Chofer', async () => {
+    await service.update(
+      'emp-1',
+      { position: EmployeePosition.DRIVER },
+      activeUser,
+    );
+    expect(driversRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ employeeId: 'emp-1' }),
+    );
+  });
+
+  it('no toca el perfil si el puesto no cambia', async () => {
+    await service.update('emp-1', { phone: '1155550000' }, activeUser);
+    expect(driversRepo.findOne).not.toHaveBeenCalled();
+    expect(driversRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('no duplica el perfil si el empleado ya era chofer', async () => {
+    driversRepo.findOne.mockResolvedValue({ id: 'drv-1', employeeId: 'emp-1' });
+    await service.update(
+      'emp-1',
+      { position: EmployeePosition.DRIVER },
+      activeUser,
+    );
+    expect(driversRepo.save).not.toHaveBeenCalled();
   });
 });

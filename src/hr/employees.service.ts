@@ -10,6 +10,7 @@ import * as bcryptjs from 'bcryptjs';
 import { IPaginationOptions, Pagination } from 'nestjs-typeorm-paginate';
 import { Employee } from './entities/employee.entity';
 import { Driver } from 'src/drivers/entities/driver.entity';
+import { DriverStatus } from 'src/common/enums/driverStatus.enum';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { Role } from 'src/common/enums/role.enum';
@@ -38,6 +39,8 @@ export class EmployeesService {
   constructor(
     @InjectRepository(Employee)
     private readonly employeesRepository: Repository<Employee>,
+    @InjectRepository(Driver)
+    private readonly driversRepository: Repository<Driver>,
     private readonly usersService: UsersService,
     private readonly movementsService: EmploymentMovementsService,
     private readonly catalogsService: CatalogsService,
@@ -85,7 +88,52 @@ export class EmployeesService {
         user,
       );
     }
+
+    await this.ensureDriverProfile(saved, user);
     return saved;
+  }
+
+  /**
+   * Si el puesto entra a la app como Chofer, el legajo necesita su perfil
+   * operativo (Driver): sin él no aparece en /admin/choferes, no se lo puede
+   * asignar a un viaje y la app del chofer (`GET /drivers/me`) no lo encuentra.
+   * Se crea vacío (licencia y vencimiento se completan después en Choferes).
+   * Nunca se borra al cambiar de puesto: los viajes lo referencian.
+   */
+  private async ensureDriverProfile(
+    employee: Employee,
+    user: ActiveUserInterface,
+  ): Promise<void> {
+    if (!employee.position) return;
+    const role = (await this.catalogsService.rolDePuesto(
+      employee.position,
+    )) as Role;
+    if (role !== Role.DRIVER) return;
+
+    // `employeeId` es único incluso para filas borradas: si el perfil se dio de
+    // baja alguna vez, se restaura en lugar de intentar insertar otro.
+    const existing = await this.driversRepository.findOne({
+      where: { employeeId: employee.id },
+      withDeleted: true,
+    });
+    if (existing) {
+      if (!existing.deletedAt) return;
+      await this.driversRepository.restore(existing.id);
+      await this.driversRepository.update(existing.id, {
+        deletedBy: () => 'NULL',
+        status: DriverStatus.ACTIVE,
+        updatedBy: user.id,
+      });
+      return;
+    }
+
+    await this.driversRepository.save(
+      this.driversRepository.create({
+        employeeId: employee.id,
+        status: DriverStatus.ACTIVE,
+        createdBy: user.id,
+      }),
+    );
   }
 
   /** Crea el User de acceso con el rol derivado del puesto y devuelve su id. */
@@ -232,8 +280,13 @@ export class EmployeesService {
     if (dto.documentId && dto.documentId !== employee.documentId) {
       await this.assertDocumentAvailable(dto.documentId);
     }
+    const positionChanged =
+      dto.position !== undefined && dto.position !== employee.position;
     Object.assign(employee, dto, { updatedBy: user.id });
-    return this.employeesRepository.save(employee);
+    const saved = await this.employeesRepository.save(employee);
+    // Pasar a un puesto de chofer también le da el perfil operativo.
+    if (positionChanged) await this.ensureDriverProfile(saved, user);
+    return saved;
   }
 
   async remove(id: string, user: ActiveUserInterface) {
