@@ -135,6 +135,15 @@ export class MaintenanceController {
     return this.maintenanceService.createOrder(dto, user);
   }
 
+  // Historial completo del taller (todas las unidades, con la patente de cada
+  // orden). Con truckId equivale a 'trucks/:truckId/orders'.
+  @Get('orders')
+  @Auth(Role.ADMIN, Role.MAINTENANCE, Role.MANAGER)
+  @ApiQuery({ name: 'truckId', required: false })
+  listOrders(@Query('truckId') truckId?: string) {
+    return this.maintenanceService.listOrders(truckId);
+  }
+
   @Get('trucks/:truckId/orders')
   @Auth(Role.ADMIN, Role.MAINTENANCE, Role.MANAGER)
   ordersByTruck(@Param('truckId') truckId: string) {

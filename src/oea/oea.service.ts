@@ -136,9 +136,13 @@ export class OeaService {
     ];
   }
 
-  /** Lo que muestra la pantalla de configuración: piso + propios, con estado. */
+  /**
+   * Lo que muestra la pantalla de configuración: piso + propios, con estado y
+   * en cuántas planillas se revisó cada propio (los usados no se eliminan).
+   */
   async plantilla() {
     const propios = await this.templateRepository.find({ order: { order: 'ASC' } });
+    const usos = await this.usosPorClave(propios.map((p) => p.key));
     return {
       base: DEFAULT_OEA_ITEMS.map((i) => ({
         key: i.key as string,
@@ -151,14 +155,29 @@ export class OeaService {
         section: i.section,
         order: i.order,
         isActive: i.isActive,
+        enUso: usos.get(i.key) ?? 0,
       })),
     };
   }
 
+  /** Cuántas planillas revisaron cada punto (clave → cantidad). */
+  private async usosPorClave(keys: string[]): Promise<Map<string, number>> {
+    if (!keys.length) return new Map();
+    const filas: { key: string; n: string }[] = await this.itemsRepository
+      .createQueryBuilder('item')
+      .select('item.key', 'key')
+      .addSelect('COUNT(*)', 'n')
+      .where('item.key IN (:...keys)', { keys })
+      .groupBy('item.key')
+      .getRawMany();
+    return new Map(filas.map((f) => [f.key, Number(f.n)]));
+  }
+
   /**
-   * Reemplaza los puntos propios. Los que salen de la lista se **desactivan**:
-   * una planilla firmada el mes pasado tiene que seguir explicando qué se
-   * revisó.
+   * Reemplaza los puntos propios. Los que salen de la lista se **eliminan** si
+   * ninguna planilla los revisó todavía; si ya aparecen en alguna, se
+   * **desactivan**: una planilla firmada el mes pasado tiene que seguir
+   * explicando qué se revisó.
    */
   async guardarPlantilla(
     items: {
@@ -198,8 +217,14 @@ export class OeaService {
       await this.templateRepository.save(fila);
     }
 
+    const usos = await this.usosPorClave(guardados.map((g) => g.key));
     for (const fila of guardados) {
-      if (claves.includes(fila.key) || !fila.isActive) continue;
+      if (claves.includes(fila.key)) continue;
+      if (!usos.get(fila.key)) {
+        await this.templateRepository.remove(fila);
+        continue;
+      }
+      if (!fila.isActive) continue;
       fila.isActive = false;
       fila.updatedBy = user.id;
       await this.templateRepository.save(fila);

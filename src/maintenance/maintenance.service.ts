@@ -149,6 +149,15 @@ export class MaintenanceService {
     });
   }
 
+  /** Todas las órdenes (o las de un camión) con su unidad, para el listado. */
+  listOrders(truckId?: string): Promise<MaintenanceOrder[]> {
+    return this.ordersRepository.find({
+      where: { ...(truckId && { truckId }) },
+      relations: ['truck'],
+      order: { date: 'DESC' },
+    });
+  }
+
   async findOrder(id: string): Promise<MaintenanceOrder> {
     const order = await this.ordersRepository.findOne({ where: { id } });
     if (!order) throw new NotFoundException('Orden de trabajo no encontrada.');

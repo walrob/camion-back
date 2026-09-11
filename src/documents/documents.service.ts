@@ -136,12 +136,17 @@ export class DocumentsService {
     return this.documentsRepository.save(document);
   }
 
-  listByOwner(
+  /**
+   * Documentos de una entidad. Sin `ownerId` devuelve los de todas las unidades
+   * (o choferes) de ese tipo; cada uno trae su `owner` para mostrar la patente
+   * o el nombre en el listado.
+   */
+  async listByOwner(
     ownerType: DocumentOwnerType,
     ownerId?: string,
     category?: DocumentCategory,
-  ): Promise<Document[]> {
-    return this.documentsRepository.find({
+  ): Promise<Array<Document & { owner: DocumentOwner }>> {
+    const docs = await this.documentsRepository.find({
       where: {
         ownerType,
         ...(ownerId && { ownerId }),
@@ -149,6 +154,7 @@ export class DocumentsService {
       },
       order: { expiryDate: 'ASC' },
     });
+    return this.withOwners(docs);
   }
 
   /**
@@ -180,7 +186,13 @@ export class DocumentsService {
       },
       order: { expiryDate: 'ASC' },
     });
+    return this.withOwners(docs);
+  }
 
+  /** Adjunta a cada documento su dueño resuelto (patente, nombre, teléfono). */
+  private async withOwners(
+    docs: Document[],
+  ): Promise<Array<Document & { owner: DocumentOwner }>> {
     // Resolvemos los dueños en lote (documento es polimórfico: ownerType/ownerId).
     const idsOf = (t: DocumentOwnerType) => [
       ...new Set(

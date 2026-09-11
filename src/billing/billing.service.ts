@@ -33,6 +33,20 @@ import {
 /** Días de plazo para pagar antes de que el período pase a vencido. */
 const DIAS_VENCIMIENTO = 10;
 
+/** Un plan tal como lo ve la tarjeta «Cambiar de plan». */
+export interface OpcionDePlan {
+  code: string;
+  name: string;
+  description: string;
+  features: string[];
+  limits: Plan['limits'] | null;
+  isNegotiated: boolean;
+  precioMensual: number;
+  esActual: boolean;
+  esAgendado: boolean;
+  tipo: 'upgrade' | 'downgrade';
+}
+
 @Injectable()
 export class BillingService {
   private readonly logger = new Logger(BillingService.name);
@@ -367,6 +381,17 @@ export class BillingService {
     company.scheduledPlanId = null;
     company.scheduledEffectiveAt = null;
     await this.companiesRepository.save(company);
+    // Un downgrade que estuviera agendado deja de tener sentido.
+    await this.updatesRepository.update(
+      {
+        companyId,
+        changeType: PlanUpdateType.PLAN_DOWNGRADE,
+        status: PlanUpdateStatus.PENDING,
+      },
+      { status: PlanUpdateStatus.CANCELLED },
+    );
+    // Sin esto las features nuevas tardan hasta un minuto en aparecer.
+    this.planContext.invalidar(companyId);
 
     await this.updatesRepository.save(
       this.updatesRepository.create({
@@ -392,6 +417,84 @@ export class BillingService {
     });
 
     return { aplicado: true, prorrateo, efectivoEl: hoy };
+  }
+
+  /**
+   * Los planes entre los que el admin puede moverse solo, con el precio que
+   * pagaría **esta** flota en cada uno (mismas unidades y add-ons que hoy).
+   * Es lo que necesita la tarjeta «Cambiar de plan» de /estado-plan.
+   */
+  async opcionesDePlan(companyId: string) {
+    const company = await this.companiesRepository.findOne({
+      where: { id: companyId },
+    });
+    if (!company) throw new BadRequestException('Empresa inexistente.');
+
+    const planes = await this.plansRepository.find({
+      where: { isPublic: true },
+      order: { sortOrder: 'ASC' },
+    });
+    const actual = company.planId
+      ? await this.plansRepository.findOne({ where: { id: company.planId } })
+      : null;
+    const agendado = company.scheduledPlanId
+      ? await this.plansRepository.findOne({
+          where: { id: company.scheduledPlanId },
+        })
+      : null;
+    const precioActual = await this.precioConPlan(companyId, actual);
+
+    const opciones: OpcionDePlan[] = [];
+    for (const p of planes) {
+      const precio = await this.precioConPlan(companyId, p);
+      opciones.push({
+        code: p.code,
+        name: p.name,
+        description: p.description,
+        features: p.features ?? [],
+        limits: p.limits ?? null,
+        isNegotiated: p.isNegotiated,
+        precioMensual: precio,
+        esActual: p.id === company.planId,
+        esAgendado: p.id === company.scheduledPlanId,
+        // Mismo criterio que `cambiarPlan`: sube si cuesta igual o más.
+        tipo: precio >= precioActual ? 'upgrade' : 'downgrade',
+      });
+    }
+
+    return {
+      actual: actual ? { code: actual.code, name: actual.name } : null,
+      agendado: agendado
+        ? {
+            code: agendado.code,
+            name: agendado.name,
+            efectivoEl: company.scheduledEffectiveAt,
+          }
+        : null,
+      planes: opciones,
+    };
+  }
+
+  /** Deja sin efecto un downgrade agendado que todavía no se aplicó. */
+  async cancelarCambioAgendado(companyId: string): Promise<void> {
+    const company = await this.companiesRepository.findOne({
+      where: { id: companyId },
+    });
+    if (!company) throw new BadRequestException('Empresa inexistente.');
+    if (!company.scheduledPlanId) {
+      throw new BadRequestException('No hay ningún cambio de plan agendado.');
+    }
+    company.scheduledPlanId = null;
+    company.scheduledEffectiveAt = null;
+    await this.companiesRepository.save(company);
+    await this.updatesRepository.update(
+      {
+        companyId,
+        changeType: PlanUpdateType.PLAN_DOWNGRADE,
+        status: PlanUpdateStatus.PENDING,
+      },
+      { status: PlanUpdateStatus.CANCELLED },
+    );
   }
 
   /** Emite el cargo prorrateado de un cambio a mitad de período. */

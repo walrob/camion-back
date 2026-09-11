@@ -70,6 +70,24 @@ export class BillingController {
     return this.storage.getFileStream(key);
   }
 
+  @Get('plan-options')
+  @Auth(Role.ADMIN, Role.MANAGER)
+  @ApiOperation({
+    summary:
+      'Planes a los que la empresa puede cambiar, con el precio estimado ' +
+      'para su flota, cuál es el actual y cuál quedó agendado.',
+  })
+  opcionesDePlan(@ActiveUser() user: ActiveUserInterface) {
+    return this.billing.opcionesDePlan(user.companyId);
+  }
+
+  @Delete('plan/scheduled')
+  @Auth(Role.ADMIN)
+  @ApiOperation({ summary: 'Cancela el downgrade agendado.' })
+  cancelarCambioAgendado(@ActiveUser() user: ActiveUserInterface) {
+    return this.billing.cancelarCambioAgendado(user.companyId);
+  }
+
   @Post('plan')
   @Auth(Role.ADMIN)
   @ApiOperation({
