@@ -7,6 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Company } from 'src/companies/entities/company.entity';
 import { Plan } from 'src/plans/entities/plan.entity';
+import { User } from 'src/users/entities/user.entity';
 import { MpWebhookEvent } from 'src/billing/entities/mp-webhook-event.entity';
 import { CompanyStatus } from 'src/common/enums/companyStatus.enum';
 import { BillingStatus } from 'src/common/enums/billing.enum';
@@ -36,6 +37,8 @@ export class SuperadminService {
     private readonly companiesRepository: Repository<Company>,
     @InjectRepository(Plan)
     private readonly plansRepository: Repository<Plan>,
+    @InjectRepository(User)
+    private readonly usersRepository: Repository<User>,
     @InjectRepository(MpWebhookEvent)
     private readonly eventosMpRepository: Repository<MpWebhookEvent>,
     private readonly billing: BillingService,
@@ -235,6 +238,106 @@ export class SuperadminService {
           };
         }),
       );
+
+      return {
+        items,
+        meta: metaDePaginacion(total, items.length, page, limit),
+      };
+    });
+  }
+
+  /**
+   * Usuarios de todas las empresas, para soporte.
+   *
+   * Responde el «no puedo entrar» sin pedirle capturas al cliente: qué rol
+   * tiene, si está activo, bloqueado o con el email sin verificar (mientras
+   * `emailVerifiedAt` esté en NULL el login se rechaza) y cuándo entró por
+   * última vez. `acceso` resume esas tres condiciones en un solo estado; el
+   * filtro del mismo nombre permite ir directo a los que no pueden entrar.
+   *
+   * Sólo lectura: la cuenta la administra el admin de su empresa.
+   */
+  async listarUsuarios(
+    filtros: {
+      empresa?: string;
+      rol?: string;
+      acceso?: 'habilitado' | 'sin-verificar' | 'bloqueado' | 'inactivo';
+      search?: string;
+      page?: number;
+      limit?: number;
+    } = {},
+  ) {
+    const { page, limit, offset } = leerPaginacion(filtros.page, filtros.limit);
+
+    return runAsSystem(async () => {
+      const qb = this.usersRepository
+        .createQueryBuilder('u')
+        .leftJoin(Company, 'c', 'c.id = u.companyId')
+        .select([
+          'u.id AS id',
+          'u.email AS email',
+          'u.name AS name',
+          'u.phone AS phone',
+          'u.role AS role',
+          'u.isActive AS isActive',
+          'u.blocked AS blocked',
+          'u.emailVerifiedAt AS emailVerifiedAt',
+          'u.lastConnection AS lastConnection',
+          'u.createdAt AS createdAt',
+          'c.id AS companyId',
+          'c.name AS companyName',
+          'c.status AS companyStatus',
+        ])
+        .where('u.deletedAt IS NULL')
+        .orderBy('u.createdAt', 'DESC');
+
+      if (filtros.empresa) qb.andWhere('u.companyId = :empresa', { empresa: filtros.empresa });
+      if (filtros.rol) qb.andWhere('u.role = :rol', { rol: filtros.rol });
+      switch (filtros.acceso) {
+        case 'habilitado':
+          qb.andWhere('u.isActive = 1 AND u.blocked = 0 AND u.emailVerifiedAt IS NOT NULL');
+          break;
+        case 'sin-verificar':
+          qb.andWhere('u.emailVerifiedAt IS NULL');
+          break;
+        case 'bloqueado':
+          qb.andWhere('u.blocked = 1');
+          break;
+        case 'inactivo':
+          qb.andWhere('u.isActive = 0');
+          break;
+      }
+      if (filtros.search) {
+        qb.andWhere(
+          '(LOWER(u.email) LIKE LOWER(:q) OR LOWER(u.name) LIKE LOWER(:q) ' +
+            'OR LOWER(c.name) LIKE LOWER(:q))',
+          { q: `%${filtros.search}%` },
+        );
+      }
+
+      const total = await qb.getCount();
+      const filas = await qb.limit(limit).offset(offset).getRawMany();
+
+      // MySQL devuelve los tinyint como número: se normalizan a booleanos para
+      // que el front no tenga que saber cómo guarda la base un `true`.
+      const items = filas.map((f) => {
+        const isActive = Boolean(Number(f.isActive));
+        const blocked = Boolean(Number(f.blocked));
+        const verificado = f.emailVerifiedAt != null;
+        const acceso = blocked
+          ? 'bloqueado'
+          : !isActive
+            ? 'inactivo'
+            : !verificado
+              ? 'sin-verificar'
+              : 'habilitado';
+        return {
+          ...f,
+          isActive,
+          blocked,
+          acceso,
+        };
+      });
 
       return {
         items,

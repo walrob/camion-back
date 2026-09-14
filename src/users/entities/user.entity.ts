@@ -78,14 +78,6 @@ export class User extends TenantEntity {
   @Column({ default: true })
   isActive: boolean;
 
-  /**
-   * Cuenta de demostración de solo lectura (para mostrar el sistema a clientes).
-   * Puede ver todo y descargar PDFs, pero no puede modificar datos: el
-   * `DemoReadOnlyGuard` bloquea toda escritura (POST/PATCH/PUT/DELETE).
-   */
-  @Column({ default: false })
-  isDemo: boolean;
-
   @Column({ type: 'timestamp', nullable: true })
   lastConnection: Date;
 

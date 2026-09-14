@@ -20,8 +20,7 @@ export const IMPERSONATION_READONLY_MESSAGE =
  * arruina la trazabilidad de la que depende el rol Auditor y, ante un reclamo,
  * deja al proveedor sin manera de demostrar qué pasó.
  *
- * No hay excepción posible: a diferencia del modo demo —que tiene `@AllowDemo()`
- * para casos puntuales—, acá **ningún** endpoint puede habilitarse. Si soporte
+ * No hay excepción posible: **ningún** endpoint puede habilitarse. Si soporte
  * necesita cambiar algo, lo hace desde el panel de superadmin, donde queda
  * registrado a su nombre.
  */

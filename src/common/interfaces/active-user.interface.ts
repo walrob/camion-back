@@ -12,5 +12,4 @@ export interface ActiveUserInterface {
    * decidir accesos críticos — eso se resuelve contra la base (fases 6 y 9).
    */
   status?: CompanyStatus;
-  isDemo?: boolean;
 }

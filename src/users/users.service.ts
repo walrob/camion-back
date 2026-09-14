@@ -45,7 +45,6 @@ export class UsersService {
   findOneByEmailWithPassword(email: string) {
     return this.usersRepository.findOne({
       where: { email },
-      // `isDemo` es imprescindible: viaja en el JWT y es lo que lee el DemoReadOnlyGuard.
       select: [
         'id',
         'email',
@@ -56,7 +55,6 @@ export class UsersService {
         'blocked',
         'profileImage',
         'isTemplateDark',
-        'isDemo',
         // Sin esto el login rechazaría a TODO el mundo: la lista es explícita,
         // así que una columna ausente llega como `undefined` y se lee igual que
         // una casilla sin confirmar.

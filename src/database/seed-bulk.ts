@@ -30,8 +30,10 @@ dotenv.config({ path: `.env.${process.env.NODE_ENV || 'development'}` });
 import { DataSource } from 'typeorm';
 import * as bcryptjs from 'bcryptjs';
 
+import { TenantSubscriber } from '../common/tenant/tenant.subscriber';
+import { runAsSystem, tenantStorage } from '../common/tenant/tenant-context';
+
 import { User } from '../users/entities/user.entity';
-import { Attachment } from '../common/attachments/entities/attachment.entity';
 import { Fleet } from '../fleet/entities/fleet.entity';
 import { Truck } from '../fleet/entities/truck.entity';
 import { Trailer } from '../fleet/entities/trailer.entity';
@@ -48,12 +50,10 @@ import { ChecklistItem } from '../checklists/entities/checklist-item.entity';
 import { Incident } from '../incidents/entities/incident.entity';
 import { IncidentEvent } from '../incidents/entities/incident-event.entity';
 import { Alert } from '../alerts/entities/alert.entity';
-import { AlertRuleConfig } from '../alerts/entities/alert-rule-config.entity';
 import { MaintenancePlan } from '../maintenance/entities/maintenance-plan.entity';
 import { MaintenanceOrder } from '../maintenance/entities/maintenance-order.entity';
 import { Document } from '../documents/entities/document.entity';
 import { Message } from '../messages/entities/message.entity';
-import { DeviceToken } from '../notifications/push/entities/device-token.entity';
 import { FuelRecord } from '../fuel/entities/fuel-record.entity';
 import { OeaInspection } from '../oea/entities/oea-inspection.entity';
 import { OeaInspectionItem } from '../oea/entities/oea-inspection-item.entity';
@@ -63,6 +63,7 @@ import { TruckStatus } from '../common/enums/truckStatus.enum';
 import { TrailerStatus } from '../common/enums/trailerStatus.enum';
 import { DriverStatus } from '../common/enums/driverStatus.enum';
 import { EmploymentStatus } from '../common/enums/employmentStatus.enum';
+import { EmploymentMovementType } from '../common/enums/employmentMovement.enum';
 import { EmployeePosition } from '../common/enums/employeePosition.enum';
 import { CertificationType } from '../common/enums/certificationType.enum';
 import { CertificationStatus } from '../common/enums/certificationStatus.enum';
@@ -158,18 +159,26 @@ async function run() {
     username: process.env.DB_USERNAME,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_DATABASE,
-    entities: [
-      User, Attachment, Fleet, Truck, Trailer, Employee, Certification,
-      TruckAssignment, EmploymentMovement, Driver, Trip, TripLogEntry, Settlement, Checklist,
-      ChecklistItem, Incident, IncidentEvent, Alert, AlertRuleConfig,
-      MaintenancePlan, MaintenanceOrder, Document, Message, DeviceToken,
-      FuelRecord, OeaInspection, OeaInspectionItem,
-    ],
-    synchronize: true,
+    // Glob y sin synchronize, por lo mismo que en seed.ts: la lista parcial
+    // deja relaciones sin resolver y el esquema es de las migraciones.
+    entities: ['src/**/*.entity.ts'],
+    synchronize: false,
   });
 
   await dataSource.initialize();
   console.log(`🔌 Conectado a ${process.env.DB_DATABASE}@${process.env.DB_HOST} (tag ${TAG})`);
+
+  // Multi-tenant: estampa companyId en cada insert y siembra sobre la empresa
+  // demo (la primera empresa cliente, la misma que adopta seed.ts).
+  new TenantSubscriber(dataSource);
+  const [empresa] = await runAsSystem(() =>
+    dataSource.query(
+      'SELECT `id`, `name` FROM `companies` WHERE `isPlatform` = 0 ORDER BY `createdAt` ASC LIMIT 1',
+    ),
+  );
+  if (!empresa) throw new Error('No hay empresa cliente: corré primero npm run seed.');
+  tenantStorage.enterWith({ companyId: empresa.id });
+  console.log(`🏢 Sembrando sobre ${empresa.name} (${empresa.id})`);
 
   const passwordHash = await bcryptjs.hash(PASSWORD, 10);
 
@@ -257,6 +266,32 @@ async function run() {
         address: `Calle ${randInt(100, 9000)}, Argentina`,
       };
     }),
+  );
+
+  // Sin el movimiento de ingreso el legajo no tiene historial y el estado no
+  // se puede recalcular (es lo que hace el alta real en RRHH).
+  const movementRepo = dataSource.getRepository(EmploymentMovement);
+  await movementRepo.save(
+    employees.map((e) => ({
+      employeeId: e.id,
+      type: EmploymentMovementType.HIRE,
+      startDate: e.hireDate,
+      resultingStatus: EmploymentStatus.ACTIVE,
+      reason: 'Alta del legajo',
+    })),
+  );
+  await movementRepo.save(
+    employees
+      .filter((e) => e.employmentStatus === EmploymentStatus.ON_LEAVE)
+      .map((e) => ({
+        employeeId: e.id,
+        type: EmploymentMovementType.LEAVE,
+        leaveType: 'vacation',
+        startDate: dateStr(-randInt(1, 10)),
+        endDate: dateStr(randInt(5, 20)),
+        resultingStatus: EmploymentStatus.ON_LEAVE,
+        reason: 'Vacaciones',
+      })),
   );
 
   const drivers = await driverRepo.save(

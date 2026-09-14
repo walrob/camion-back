@@ -4,6 +4,7 @@ import { NotFoundException } from '@nestjs/common';
 import { SuperadminService } from './superadmin.service';
 import { Company } from 'src/companies/entities/company.entity';
 import { Plan } from 'src/plans/entities/plan.entity';
+import { User } from 'src/users/entities/user.entity';
 import { MpWebhookEvent } from 'src/billing/entities/mp-webhook-event.entity';
 import { BillingService } from 'src/billing/billing.service';
 import { PlanContextService } from 'src/plans/plan-context.service';
@@ -32,6 +33,7 @@ describe('SuperadminService.configuracionDe', () => {
         SuperadminService,
         { provide: getRepositoryToken(Company), useValue: companies },
         { provide: getRepositoryToken(Plan), useValue: {} },
+        { provide: getRepositoryToken(User), useValue: {} },
         { provide: getRepositoryToken(MpWebhookEvent), useValue: {} },
         { provide: BillingService, useValue: {} },
         { provide: PlanContextService, useValue: {} },

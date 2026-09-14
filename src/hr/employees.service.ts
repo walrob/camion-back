@@ -200,6 +200,7 @@ export class EmployeesService {
       limit: Number(options.limit),
       search,
       searchFields: ['firstName', 'lastName', 'documentId', 'phone'],
+      relations: ['user'],
       orderBy: sort.orderBy,
       order: sort.order,
       baseWhere: {
@@ -221,6 +222,7 @@ export class EmployeesService {
 
     const qb = this.employeesRepository
       .createQueryBuilder('employee')
+      .leftJoinAndSelect('employee.user', 'user')
       .leftJoin(
         Driver,
         'drv',

@@ -15,7 +15,6 @@ import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { PasswordDto } from './dto/password.dto';
 import { LoginDto } from './dto/login.dto';
 import { Auth } from './decorators/auth.decorator';
-import { AllowDemo } from './decorators/allow-demo.decorator';
 import { Role } from '../common/enums/role.enum';
 import { CreateOperatorDto } from './dto/create-operator.dto';
 
@@ -39,7 +38,6 @@ export class AuthController {
    */
   @ApiBearerAuth()
   @Auth()
-  @AllowDemo()
   @Get('session')
   session(@ActiveUser() user: ActiveUserInterface) {
     return this.authService.getSession(user);
@@ -57,9 +55,7 @@ export class AuthController {
     return this.authService.changePassword(passwordDto);
   }
 
-  // Preferencia visual personal: no altera datos de negocio, el demo puede usarla.
   @Auth()
-  @AllowDemo()
   @Post('change-dark')
   changeDarkUser(@Request() req, @Body() body: { dark: boolean }) {
     return this.authService.changeDarkUser(req.user.id, body.dark);

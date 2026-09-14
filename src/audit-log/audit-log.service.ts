@@ -62,6 +62,8 @@ export const AUDIT = {
   CATALOG_UPDATED: 'catalog.updated',
   IMPERSONATION_STARTED: 'superadmin.impersonation_started',
   SUPERADMIN_VIEWED_COMPANY: 'superadmin.viewed_company',
+  /** Listado transversal de usuarios: se ven cuentas de todos los clientes. */
+  SUPERADMIN_VIEWED_USERS: 'superadmin.viewed_users',
 } as const;
 
 export interface DatosAuditoria {

@@ -80,6 +80,46 @@ export class SuperadminController {
     });
   }
 
+  @Get('users')
+  @ApiOperation({
+    summary:
+      'Usuarios de todas las empresas: rol, acceso (activo, bloqueado, email verificado) y última conexión.',
+  })
+  async usuarios(
+    @Query('empresa') empresa: string | undefined,
+    @Query('rol') rol: string | undefined,
+    @Query('acceso') acceso: string | undefined,
+    @Query('search') search: string | undefined,
+    @Query('page') page: string | undefined,
+    @Query('limit') limit: string | undefined,
+    @ActiveUser() user: ActiveUserInterface,
+    @Req() req: Request,
+  ) {
+    const r = await this.superadmin.listarUsuarios({
+      empresa,
+      rol,
+      acceso: acceso as never,
+      search,
+      page: Number(page),
+      limit: Number(limit),
+    });
+
+    // Lectura auditada, como la ficha: son cuentas de clientes. Se guarda con
+    // qué filtros se miró para poder reconstruir qué se vio.
+    await this.auditLog.registrar(
+      user,
+      {
+        action: AUDIT.SUPERADMIN_VIEWED_USERS,
+        companyId: empresa ?? null,
+        entityType: 'user',
+        metadata: { empresa, rol, acceso, search, page: r.meta.currentPage },
+      },
+      req as never,
+    );
+
+    return r;
+  }
+
   @Get('companies/:id')
   @ApiOperation({ summary: 'Ficha de una empresa: plan, add-ons, períodos, uso.' })
   async verEmpresa(

@@ -2,7 +2,6 @@ import { applyDecorators, UseGuards } from '@nestjs/common';
 import { Role } from '../../common/enums/role.enum';
 import { AuthGuard } from '../guard/auth.guard';
 import { RolesGuard } from '../guard/roles.guard';
-import { DemoReadOnlyGuard } from '../guard/demo-readonly.guard';
 import { ImpersonationReadOnlyGuard } from '../guard/impersonation-readonly.guard';
 import { Roles } from './roles.decorator';
 import { Feature } from '../../common/enums/feature.enum';
@@ -11,8 +10,7 @@ import { AccountStatusGuard } from '../guard/account-status.guard';
 import { RequiresFeature } from './requires-feature.decorator';
 
 export function Auth(...roles: Role[]) {
-  // Orden: autentica (carga request.user) → valida rol → valida plan → bloquea
-  // escrituras si es demo.
+  // Orden: autentica (carga request.user) → valida rol → valida plan.
   //
   // FeatureGuard va acá y no a nivel de clase por el orden en que Nest corre los
   // guards: los de clase corren ANTES que los de método, así que un
@@ -28,7 +26,6 @@ export function Auth(...roles: Role[]) {
       RolesGuard,
       AccountStatusGuard,
       FeatureGuard,
-      DemoReadOnlyGuard,
       // Última barrera: en modo soporte no se escribe nada (R8.2).
       ImpersonationReadOnlyGuard,
     ),
@@ -54,7 +51,6 @@ export function AuthFeature(feature: Feature, ...roles: Role[]) {
       RolesGuard,
       AccountStatusGuard,
       FeatureGuard,
-      DemoReadOnlyGuard,
       ImpersonationReadOnlyGuard,
     ),
   );
