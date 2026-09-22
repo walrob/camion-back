@@ -92,10 +92,8 @@ export class SuperadminController {
     @Query('search') search: string | undefined,
     @Query('page') page: string | undefined,
     @Query('limit') limit: string | undefined,
-    @ActiveUser() user: ActiveUserInterface,
-    @Req() req: Request,
   ) {
-    const r = await this.superadmin.listarUsuarios({
+    return this.superadmin.listarUsuarios({
       empresa,
       rol,
       acceso: acceso as never,
@@ -103,78 +101,26 @@ export class SuperadminController {
       page: Number(page),
       limit: Number(limit),
     });
-
-    // Lectura auditada, como la ficha: son cuentas de clientes. Se guarda con
-    // qué filtros se miró para poder reconstruir qué se vio.
-    await this.auditLog.registrar(
-      user,
-      {
-        action: AUDIT.SUPERADMIN_VIEWED_USERS,
-        companyId: empresa ?? null,
-        entityType: 'user',
-        metadata: { empresa, rol, acceso, search, page: r.meta.currentPage },
-      },
-      req as never,
-    );
-
-    return r;
   }
 
   @Get('companies/:id')
   @ApiOperation({ summary: 'Ficha de una empresa: plan, add-ons, períodos, uso.' })
-  async verEmpresa(
-    @Param('id') id: string,
-    @ActiveUser() user: ActiveUserInterface,
-    @Req() req: Request,
-  ) {
-    const ficha = await this.superadmin.verEmpresa(id);
-
-    // Se audita también la LECTURA: acceder a los datos de un cliente es
-    // justamente el privilegio que hay que poder rendir (riesgo R8.1).
-    await this.auditLog.registrar(
-      user,
-      {
-        action: AUDIT.SUPERADMIN_VIEWED_COMPANY,
-        companyId: id,
-        entityType: 'company',
-        entityId: id,
-      },
-      req as never,
-    );
-
-    return ficha;
+  verEmpresa(@Param('id') id: string) {
+    return this.superadmin.verEmpresa(id);
   }
 
   /**
    * Configuración efectiva de una empresa (docs/CONFIGURACION.md §13).
    *
    * Misma forma que `GET /settings`: `{ groups, settings }` con `value` e
-   * `isDefault` por ajuste. Sólo lectura, y auditado como la ficha: leer la
-   * configuración de un cliente es el mismo privilegio que leer sus datos.
+   * `isDefault` por ajuste. Sólo lectura.
    */
   @Get('companies/:id/settings')
   @ApiOperation({
     summary: 'Configuración efectiva de una empresa. Sólo lectura, para soporte.',
   })
-  async configuracionDeEmpresa(
-    @Param('id') id: string,
-    @ActiveUser() user: ActiveUserInterface,
-    @Req() req: Request,
-  ) {
-    const configuracion = await this.superadmin.configuracionDe(id);
-
-    await this.auditLog.registrar(
-      user,
-      {
-        action: AUDIT.SUPERADMIN_VIEWED_COMPANY,
-        companyId: id,
-        entityType: 'company',
-        entityId: id,
-      },
-      req as never,
-    );
-
-    return configuracion;
+  configuracionDeEmpresa(@Param('id') id: string) {
+    return this.superadmin.configuracionDe(id);
   }
 
   @Get('billing')
