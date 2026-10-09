@@ -8,6 +8,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
+  Invoice,
   MercadoPagoConfig,
   Payment as MpPaymentClient,
   PreApproval,
@@ -65,6 +66,7 @@ export class MpPaymentsService {
     preference: Preference;
     preapproval: PreApproval;
     payment: MpPaymentClient;
+    invoice: Invoice;
   } | null = null;
 
   constructor(
@@ -104,6 +106,7 @@ export class MpPaymentsService {
       preference: new Preference(config),
       preapproval: new PreApproval(config),
       payment: new MpPaymentClient(config),
+      invoice: new Invoice(config),
     };
     return this.clientes;
   }
@@ -133,6 +136,24 @@ export class MpPaymentsService {
 
   private get urlDeRetorno(): string {
     return `${process.env.FRONT_URL}/estado-plan`;
+  }
+
+  /**
+   * ¿El front es una URL pública con HTTPS?
+   *
+   * MP rechaza la preferencia entera si se pide `auto_return` con un retorno a
+   * localhost, así que en desarrollo el link de pago no se podría generar.
+   */
+  private get frontPublico(): boolean {
+    try {
+      const url = new URL(process.env.FRONT_URL ?? '');
+      return (
+        url.protocol === 'https:' &&
+        !['localhost', '127.0.0.1', '0.0.0.0'].includes(url.hostname)
+      );
+    } catch {
+      return false;
+    }
   }
 
   // ─────────────────────────── Cobro puntual ────────────────────────────────
@@ -178,7 +199,7 @@ export class MpPaymentsService {
           pending: `${this.urlDeRetorno}?pago=pendiente`,
         },
         notification_url: this.urlDeAvisos,
-        auto_return: 'approved',
+        ...(this.frontPublico ? { auto_return: 'approved' } : {}),
         external_reference: sub.id,
         // Sin esto MP admite medios que quedan "en proceso" durante días, y el
         // cliente cree que pagó mientras la cuenta sigue marchando a bloqueo.
@@ -189,8 +210,9 @@ export class MpPaymentsService {
     return {
       subscriptionId: sub.id,
       amount: importe,
+      // MP ya no tiene sandbox: las pruebas usan `init_point` con credenciales
+      // de prueba, igual que producción.
       url: respuesta.init_point,
-      sandboxUrl: respuesta.sandbox_init_point,
     };
   }
 
@@ -288,6 +310,8 @@ export class MpPaymentsService {
       notification_url: this.urlDeAvisos,
       external_reference: companyId,
       payer_email: payerEmail,
+      // Sin tarjeta: el cliente la carga en MP al seguir el `init_point`.
+      status: 'pending',
     };
 
     const respuesta = await this.mp().preapproval.create({
@@ -421,7 +445,10 @@ export class MpPaymentsService {
    * podría marcar su cuenta como paga mandando un JSON. El aviso sólo dice qué
    * mirar; lo que vale es la respuesta de la API con nuestro token.
    */
-  async confirmarPago(mpPaymentId: string): Promise<ResultadoConfirmacion> {
+  async confirmarPago(
+    mpPaymentId: string,
+    deUnDebito?: { referencia?: string; preapprovalId?: string },
+  ): Promise<ResultadoConfirmacion> {
     if (!mpPaymentId) throw new BadRequestException('Falta el id del pago.');
 
     // Primera barrera: el pago ya registrado. La segunda —la que de verdad
@@ -442,7 +469,9 @@ export class MpPaymentsService {
       throw new BadRequestException('No se pudo leer el pago en Mercado Pago.');
     }
 
-    const referencia = mpPago.external_reference;
+    // Los pagos de un débito automático pueden no traer referencia propia; en
+    // ese caso vale la de la suscripción, que es la empresa.
+    const referencia = mpPago.external_reference || deUnDebito?.referencia;
     if (!referencia) {
       throw new BadRequestException('El pago no trae external_reference.');
     }
@@ -480,7 +509,7 @@ export class MpPaymentsService {
             mpPaymentId,
             mpPreapprovalId: mpPago.metadata?.preapproval_id
               ? String(mpPago.metadata.preapproval_id)
-              : null,
+              : (deUnDebito?.preapprovalId ?? null),
             reference: `MP ${mpPaymentId}`,
           }),
         );
@@ -528,6 +557,38 @@ export class MpPaymentsService {
       subscriptionId: subscription.id,
       acreditado,
     };
+  }
+
+  /**
+   * Acredita un débito mensual de la suscripción (`authorized_payment`).
+   *
+   * El aviso de la factura llega aunque el pago todavía no exista —está
+   * programado, o MP lo está reintentando tras un rechazo—. En ese caso se
+   * devuelve `pendiente` y el aviso queda abierto para el próximo cambio. Si ya
+   * hay pago, se acredita por el mismo camino que cualquier otro: el índice
+   * único de `mpPaymentId` evita la doble acreditación cuando también llega el
+   * aviso `payment` del mismo cobro.
+   */
+  async confirmarDebito(
+    facturaId: string,
+  ): Promise<ResultadoConfirmacion | { pendiente: true; estado?: string }> {
+    const factura = await this.mp().invoice.get({ id: facturaId });
+
+    const pagoId = factura?.payment?.id;
+    if (!pagoId) return { pendiente: true, estado: factura?.status };
+
+    let referencia = factura.external_reference;
+    if (!referencia && factura.preapproval_id) {
+      const preapproval = await this.mp().preapproval.get({
+        id: factura.preapproval_id,
+      });
+      referencia = preapproval?.external_reference;
+    }
+
+    return this.confirmarPago(String(pagoId), {
+      referencia,
+      preapprovalId: factura.preapproval_id,
+    });
   }
 
   /**

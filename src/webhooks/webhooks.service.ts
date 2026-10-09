@@ -8,6 +8,8 @@ import { runAsSystem } from 'src/common/tenant/tenant-context';
 /** Tipos de aviso que sabemos procesar. El resto se registra y se ignora. */
 const TIPOS_DE_PAGO = ['payment'];
 const TIPOS_DE_SUSCRIPCION = ['preapproval', 'subscription_preapproval'];
+/** Cada débito mensual de una suscripción (una "factura" de MP). */
+const TIPOS_DE_DEBITO = ['subscription_authorized_payment'];
 
 export interface ResultadoWebhook {
   procesado: boolean;
@@ -54,6 +56,16 @@ export class WebhooksService {
 
     try {
       const detalle = await this.despachar(type, resourceId);
+
+      // El débito todavía no tiene pago (está programado o en reintento). No se
+      // marca como procesado: MP vuelve a avisar sobre la misma factura cuando
+      // cambia, y con la marca puesta ese aviso se descartaría como repetido.
+      if ((detalle as { pendiente?: boolean })?.pendiente) {
+        await runAsSystem(() =>
+          this.eventos.update(evento.id, { error: 'Débito sin pago todavía.' }),
+        );
+        return { procesado: false, duplicado: false, detalle };
+      }
 
       await runAsSystem(() =>
         this.eventos.update(evento.id, {
@@ -110,6 +122,10 @@ export class WebhooksService {
 
     if (TIPOS_DE_SUSCRIPCION.includes(type)) {
       return this.mpPayments.confirmarPreapproval(resourceId);
+    }
+
+    if (TIPOS_DE_DEBITO.includes(type)) {
+      return this.mpPayments.confirmarDebito(resourceId);
     }
 
     // MP manda avisos de cosas que no usamos (`plan`, `invoice`, tests desde el

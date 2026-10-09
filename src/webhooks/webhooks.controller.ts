@@ -1,6 +1,16 @@
-import { Body, Controller, HttpCode, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Headers,
+  HttpCode,
+  Logger,
+  Post,
+  Query,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { ApiExcludeController } from '@nestjs/swagger';
+import { esFirmaMpValida } from 'src/common/utils/mp-signature.util';
 import { WebhooksService } from './webhooks.service';
 
 /**
@@ -16,18 +26,24 @@ interface AvisoMp {
 /**
  * Avisos de Mercado Pago.
  *
- * **Es público**: MP no manda credenciales. Lo que lo hace seguro no es un
- * token sino que el aviso no se cree: sólo dice "mirá el recurso X", y el
- * estado real se consulta contra la API de MP. Un tercero que mandara avisos
- * falsos lo único que lograría es que consultemos pagos ajenos, que no existen
- * o que no son de ninguna empresa nuestra.
+ * **Es público**, así que tiene dos barreras:
  *
- * MP también manda el identificador por query string (`?type=...&data.id=...`)
- * según el tipo de notificación, así que se aceptan las dos formas.
+ *  1. **La firma `x-signature`** (HMAC con `MP_WEBHOOK_SECRET`): descarta todo
+ *     lo que no venga de MP antes de tocar la base o la API. Sin el secreto
+ *     configurado se rechaza todo: un webhook abierto es peor que uno que no
+ *     anda, porque el segundo se nota.
+ *  2. **El aviso no se cree**: sólo dice "mirá el recurso X", y el estado real
+ *     se consulta contra la API de MP.
+ *
+ * MP también manda el formato viejo IPN (`?topic=...&id=...`), que **no viene
+ * firmado**. Se responde 200 sin procesarlo: es un duplicado del aviso nuevo,
+ * que sí llega firmado, y rechazarlo sólo haría que MP lo reintente un día.
  */
 @ApiExcludeController()
 @Controller('webhooks')
 export class WebhooksController {
+  private readonly logger = new Logger(WebhooksController.name);
+
   constructor(private readonly webhooks: WebhooksService) {}
 
   @Post('mercadopago')
@@ -39,13 +55,32 @@ export class WebhooksController {
   @Throttle({ default: { limit: 300, ttl: 60_000 } })
   async mercadopago(
     @Body() body: AvisoMp,
+    @Headers('x-signature') signature?: string,
+    @Headers('x-request-id') requestId?: string,
     @Query('type') queryType?: string,
     @Query('topic') queryTopic?: string,
-    @Query('id') queryId?: string,
     @Query('data.id') queryDataId?: string,
   ) {
-    const type = body?.type ?? queryType ?? queryTopic;
-    const id = body?.data?.id ?? queryDataId ?? queryId;
+    if (queryTopic && !body?.type && !queryType) {
+      return { received: true, ignorado: 'ipn' };
+    }
+
+    // MP firma el `data.id` de la query; el del cuerpo es el mismo valor.
+    const id = queryDataId ?? body?.data?.id;
+    const type = body?.type ?? queryType;
+
+    const secret = process.env.MP_WEBHOOK_SECRET ?? '';
+    if (
+      !esFirmaMpValida({
+        secret,
+        signature,
+        requestId,
+        dataId: id !== undefined ? String(id) : undefined,
+      })
+    ) {
+      if (!secret) this.logger.error('MP_WEBHOOK_SECRET no configurado.');
+      throw new UnauthorizedException('Firma inválida.');
+    }
 
     // Sin tipo o sin recurso no hay nada que consultar. Se responde 200 igual:
     // devolver un error haría que MP lo reintente eternamente sin que cambie

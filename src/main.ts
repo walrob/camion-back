@@ -37,6 +37,18 @@ function verificarEntorno(): void {
     faltantes.push('BACK_URL (obligatoria si está definida MP_ACCESS_TOKEN)');
   }
 
+  // Sin el secreto se rechazan todos los avisos de MP y los pagos no se
+  // acreditan. En desarrollo se tolera para poder arrancar antes de tenerlo.
+  if (
+    process.env.NODE_ENV === 'production' &&
+    process.env.MP_ACCESS_TOKEN &&
+    !process.env.MP_WEBHOOK_SECRET
+  ) {
+    faltantes.push(
+      'MP_WEBHOOK_SECRET (obligatoria si está definida MP_ACCESS_TOKEN)',
+    );
+  }
+
   if (faltantes.length > 0) {
     throw new Error(
       `Faltan variables de entorno obligatorias: ${faltantes.join(', ')}. ` +
