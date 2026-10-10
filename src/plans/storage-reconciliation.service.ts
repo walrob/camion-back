@@ -50,7 +50,7 @@ export class StorageReconciliationService {
       await this.companiesRepository.query(
         'SELECT c.`id` AS id, c.`storageBytesUsed` AS usado, ' +
           'COALESCE((SELECT SUM(a.`sizeBytes`) FROM `attachments` a ' +
-          'WHERE a.`companyId` = c.`id` AND a.`deletedAt` IS NULL), 0) AS real ' +
+          'WHERE a.`companyId` = c.`id` AND a.`deletedAt` IS NULL), 0) AS `real` ' +
           'FROM `companies` c WHERE c.`deletedAt` IS NULL',
       );
 
