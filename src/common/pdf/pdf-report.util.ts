@@ -2,6 +2,7 @@
 // `import ... from` el default queda undefined en runtime.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import PDFDocument = require('pdfkit');
+import { drawNorthArCredit, PDF_CREATOR } from './northar-credit';
 
 /**
  * Base para los comprobantes en PDF del sistema (liquidaciones, y lo que venga
@@ -17,16 +18,28 @@ import PDFDocument = require('pdfkit');
  */
 
 // ── Identidad visual ────────────────────────────────────────────────────────
+// Sobria a propósito: el azul marino es el único color de marca y los estados
+// van en tonos apagados, contorneados y no en bloques llenos.
 const COLOR = {
-  primary: '#0F3D5C',
+  primary: '#1F3A5F',
   ink: '#1F2933',
   muted: '#6B7280',
-  line: '#D7DDE3',
-  band: '#EEF3F7',
-  zebra: '#F7F9FB',
-  ok: '#0B6E4F',
-  warn: '#B45309',
+  line: '#E2E6EC',
+  band: '#F1F4F8',
+  soft: '#F8FAFC',
+  white: '#FFFFFF',
 };
+
+/** Colores de los chips de estado: texto/contorno sobre fondo. */
+const TONE = {
+  ok: { fg: '#2E7D5B', bg: '#F1F8F4' },
+  warn: { fg: '#B54708', bg: '#FEF6EE' },
+  danger: { fg: '#B42318', bg: '#FDF2F1' },
+  neutral: { fg: '#6B7280', bg: '#F8FAFC' },
+};
+
+/** Radio máximo de las esquinas. */
+const RADIUS = 4;
 
 const FONT = {
   regular: 'Helvetica',
@@ -35,10 +48,12 @@ const FONT = {
 };
 
 const PAGE = {
-  margins: { top: 124, bottom: 64, left: 40, right: 40 },
-  headerTop: 32,
-  /** Distancia del pie al borde inferior de la hoja. */
-  footerOffset: 44,
+  margins: { top: 136, bottom: 64, left: 40, right: 40 },
+  /** Alto de la franja de color en el borde superior de cada hoja. */
+  topBand: 4,
+  headerTop: 30,
+  /** Distancia del filete del pie al borde inferior de la hoja. */
+  footerOffset: 50,
 };
 
 const TZ = 'America/Argentina/Buenos_Aires';
@@ -179,7 +194,7 @@ export interface PdfMeta {
   /** Bajada corta debajo del título. */
   subtitle?: string;
   /** Estado a mostrar como chip en el encabezado. */
-  badge?: { text: string; tone?: 'ok' | 'warn' | 'neutral' };
+  badge?: { text: string; tone?: keyof typeof TONE };
   /**
    * Fecha a la que corresponden los datos (emisión / corte). Se imprime en el
    * encabezado junto a la fecha de generación para que no se confundan.
@@ -209,6 +224,12 @@ export interface TableOptions {
   rows: unknown[][];
   /** Fila de cierre en negrita (totales de la tabla). */
   totalRow?: unknown[];
+  /**
+   * Cómo se destaca `totalRow`. Por defecto es un subtotal (banda gris); con
+   * `'total'` va en la banda azul, para cuando esa fila es el total del
+   * documento y no hay panel de `totals()` después.
+   */
+  totalStyle?: 'subtotal' | 'total';
   /** Texto cuando no hay filas. */
   emptyText?: string;
   fontSize?: number;
@@ -231,6 +252,7 @@ export class PdfReport {
         Title: sanitize(meta.title),
         Author: meta.company.name,
         Subject: sanitize(meta.subtitle || meta.docId || meta.title),
+        Creator: PDF_CREATOR,
         CreationDate: this.generatedAt,
       },
     });
@@ -263,12 +285,19 @@ export class PdfReport {
     const right = doc.page.width - PAGE.margins.right;
     const top = PAGE.headerTop;
 
+    // Franja de color a todo el ancho de la hoja.
+    doc
+      .rect(0, 0, doc.page.width, PAGE.topBand)
+      .fillColor(COLOR.primary)
+      .fill();
+
     this.drawLogo(left, top);
 
     // Datos de la empresa, a la derecha del logo.
     const infoX = left + 104;
-    doc.font(FONT.bold).fontSize(12).fillColor(COLOR.primary);
+    doc.font(FONT.bold).fontSize(11.5).fillColor(COLOR.ink);
     doc.text(sanitize(co.name), infoX, top + 2, { width: 200 });
+    doc.y += 1;
     doc.font(FONT.regular).fontSize(7.5).fillColor(COLOR.muted);
     [co.taxId, co.address, co.contact]
       .filter(Boolean)
@@ -276,36 +305,39 @@ export class PdfReport {
         doc.text(sanitize(line), infoX, doc.y, { width: 200 }),
       );
 
-    // Bloque del comprobante, alineado a la derecha.
+    // Bloque del comprobante, alineado a la derecha: el tipo de documento chico
+    // y espaciado, y debajo el número grande.
     const boxW = 210;
     const boxX = right - boxW;
-    doc.font(FONT.bold).fontSize(15).fillColor(COLOR.ink);
-    doc.text(sanitize(this.meta.title).toUpperCase(), boxX, top, {
-      width: boxW,
-      align: 'right',
+    this.textRight(sanitize(this.meta.title).toUpperCase(), right, top, {
+      font: FONT.bold,
+      size: 7.5,
+      color: COLOR.muted,
+      spacing: 1.6,
     });
-
-    doc.font(FONT.regular).fontSize(8.5).fillColor(COLOR.muted);
+    doc.y = top + 12;
     if (this.meta.docId) {
-      doc.font(FONT.bold).fontSize(9.5).fillColor(COLOR.primary);
-      doc.text(sanitize(this.meta.docId), boxX, doc.y + 1, {
+      doc.font(FONT.bold).fontSize(17).fillColor(COLOR.primary);
+      doc.text(sanitize(this.meta.docId), boxX, doc.y, {
         width: boxW,
         align: 'right',
       });
-      doc.font(FONT.regular).fontSize(8.5).fillColor(COLOR.muted);
+      doc.y += 2;
     }
     if (this.meta.subtitle) {
+      doc.font(FONT.regular).fontSize(8.5).fillColor(COLOR.ink);
       doc.text(sanitize(this.meta.subtitle), boxX, doc.y, {
         width: boxW,
         align: 'right',
       });
     }
+    doc.font(FONT.regular).fontSize(7.5).fillColor(COLOR.muted);
     doc.text(
       `${this.meta.dataDateLabel || 'Fecha del comprobante'}: ${dateOnly(
         this.meta.dataDate ?? this.generatedAt,
       )}`,
       boxX,
-      doc.y,
+      doc.y + 1,
       { width: boxW, align: 'right' },
     );
     doc.text(`Generado: ${dateTime(this.generatedAt)}`, boxX, doc.y, {
@@ -313,20 +345,41 @@ export class PdfReport {
       align: 'right',
     });
 
-    if (this.meta.badge) this.drawBadge(boxX, boxW);
+    if (this.meta.badge) this.drawBadge(right);
 
     // Filete inferior del encabezado.
-    const ruleY = PAGE.margins.top - 11;
+    const ruleY = PAGE.margins.top - 12;
     doc
       .moveTo(left, ruleY)
       .lineTo(right, ruleY)
-      .lineWidth(1.5)
+      .lineWidth(0.8)
       .strokeColor(COLOR.primary)
       .stroke();
 
     doc.fillColor(COLOR.ink).font(FONT.regular).fontSize(9);
     doc.x = left;
     doc.y = PAGE.margins.top;
+  }
+
+  /**
+   * Texto de una línea alineado a la derecha midiendo su ancho. Con
+   * `characterSpacing`, el ajuste de línea de pdfkit cuenta un espaciado de más
+   * y el texto no queda a ras del resto del bloque.
+   */
+  private textRight(
+    text: string,
+    right: number,
+    y: number,
+    o: { font: string; size: number; color: string; spacing?: number },
+  ): void {
+    const { doc } = this;
+    const spacing = o.spacing ?? 0;
+    doc.font(o.font).fontSize(o.size).fillColor(o.color);
+    const w = doc.widthOfString(text, { characterSpacing: spacing });
+    doc.text(text, right - w, y, {
+      lineBreak: false,
+      characterSpacing: spacing,
+    });
   }
 
   private drawLogo(x: number, y: number): void {
@@ -352,39 +405,34 @@ export class PdfReport {
       .map((word) => word[0].toUpperCase())
       .join('');
     doc.save();
-    doc
-      .roundedRect(x, y, w, h, 4)
-      .lineWidth(1)
-      .dash(3, { space: 2 })
-      .strokeColor(COLOR.line)
-      .stroke();
-    doc.undash();
+    doc.roundedRect(x, y, w, h, RADIUS).fillColor(COLOR.band).fill();
     doc.font(FONT.bold).fontSize(16).fillColor(COLOR.primary);
-    doc.text(initials || 'CX', x, y + h / 2 - 9, { width: w, align: 'center' });
+    doc.text(initials || 'CX', x, y + h / 2 - 7, { width: w, align: 'center' });
     doc.restore();
   }
 
-  private drawBadge(boxX: number, boxW: number): void {
+  private drawBadge(right: number): void {
     const { doc } = this;
     const badge = this.meta.badge!;
-    const tone =
-      badge.tone === 'ok'
-        ? COLOR.ok
-        : badge.tone === 'warn'
-          ? COLOR.warn
-          : COLOR.muted;
+    const tone = TONE[badge.tone ?? 'neutral'];
     const text = sanitize(badge.text).toUpperCase();
+    const spacing = 0.6;
     doc.font(FONT.bold).fontSize(6.5);
-    const h = 11;
-    const w = doc.widthOfString(text) + 11;
-    const x = boxX + boxW - w;
-    const y = doc.y + 3;
+    const textW = doc.widthOfString(text, { characterSpacing: spacing });
+    const h = 12;
+    const w = textW + 14;
+    const x = right - w;
+    const y = doc.y + 4;
     doc
-      .roundedRect(x, y, w, h, h / 2)
-      .lineWidth(0.7)
-      .strokeColor(tone)
-      .stroke();
-    doc.fillColor(tone).text(text, x, y + 3, { width: w, align: 'center' });
+      .roundedRect(x, y, w, h, 2)
+      .lineWidth(0.6)
+      .fillColor(tone.bg)
+      .strokeColor(tone.fg)
+      .fillAndStroke();
+    doc.fillColor(tone.fg).text(text, x + 7, y + 3.4, {
+      lineBreak: false,
+      characterSpacing: spacing,
+    });
     doc.y = y + h + 2;
   }
 
@@ -395,7 +443,7 @@ export class PdfReport {
 
     for (let i = 0; i < range.count; i++) {
       doc.switchToPage(range.start + i);
-      const y = doc.page.height - PAGE.footerOffset;
+      const ruleY = doc.page.height - PAGE.footerOffset;
       const left = PAGE.margins.left;
       const width = this.contentWidth;
 
@@ -405,23 +453,32 @@ export class PdfReport {
       doc.page.margins.bottom = 0;
 
       doc
-        .moveTo(left, y - 8)
-        .lineTo(left + width, y - 8)
+        .moveTo(left, ruleY)
+        .lineTo(left + width, ruleY)
         .lineWidth(0.5)
         .strokeColor(COLOR.line)
         .stroke();
 
-      doc.font(FONT.regular).fontSize(7).fillColor(COLOR.muted);
+      // Textos del pie a la izquierda, numeración a la derecha.
+      const textY = ruleY + 6;
+      const noteW = width * 0.78;
       const note =
         this.meta.footerNote ||
         `Documento generado automáticamente por ${co.name}. Sin valor fiscal.`;
-      doc.text(sanitize(note), left, y, { width: width * 0.7 });
-      doc.text(
-        `Emitido ${dateTime(this.generatedAt)}  ·  Página ${i + 1} de ${range.count}`,
-        left + width * 0.7,
-        y,
-        { width: width * 0.3, align: 'right' },
+      const footerText = sanitize(
+        `${note}  ·  Emitido ${dateTime(this.generatedAt)}`,
       );
+      doc.font(FONT.regular).fontSize(7).fillColor(COLOR.muted);
+      const textH = doc.heightOfString(footerText, { width: noteW });
+      doc.text(footerText, left, textY, { width: noteW });
+      doc.text(`Página ${i + 1} de ${range.count}`, left + noteW, textY, {
+        width: width - noteW,
+        align: 'right',
+        lineBreak: false,
+      });
+
+      // La firma va pegada debajo del texto del pie, sin espacio de más.
+      drawNorthArCredit(doc, left + width / 2, textY + textH + 3);
 
       doc.page.margins.bottom = bottomMargin;
     }
@@ -434,20 +491,22 @@ export class PdfReport {
     if (this.doc.y + height > this.bottomLimit) this.doc.addPage();
   }
 
-  /** Título de sección con barra de color. */
+  /** Título de sección con filete vertical de color. */
   section(title: string, gapBefore = 14): this {
     const { doc } = this;
-    this.ensure(34);
-    doc.y += gapBefore;
+    // El título más el arranque de lo que sigue (encabezado de tabla y una
+    // fila): si no, el título queda solo al pie y su contenido en la otra hoja.
+    this.ensure(gapBefore + 18 + 44);
+    if (doc.y > PAGE.margins.top) doc.y += gapBefore;
     const y = doc.y;
-    doc.rect(PAGE.margins.left, y, 3, 12).fillColor(COLOR.primary).fill();
+    doc.rect(PAGE.margins.left, y, 2, 11).fillColor(COLOR.primary).fill();
     doc
       .font(FONT.bold)
-      .fontSize(10)
-      .fillColor(COLOR.primary)
-      .text(sanitize(title).toUpperCase(), PAGE.margins.left + 9, y + 1.5, {
-        width: this.contentWidth - 9,
-        characterSpacing: 0.4,
+      .fontSize(8.5)
+      .fillColor(COLOR.ink)
+      .text(sanitize(title).toUpperCase(), PAGE.margins.left + 8, y + 2, {
+        width: this.contentWidth - 8,
+        characterSpacing: 1.2,
       });
     doc.y = y + 18;
     doc.x = PAGE.margins.left;
@@ -455,66 +514,117 @@ export class PdfReport {
     return this;
   }
 
-  /** Grilla de etiqueta/valor en columnas. */
+  /**
+   * Grilla de etiqueta/valor en columnas, dentro de un recuadro gris claro.
+   *
+   * Primero se arman las filas y se reparten entre páginas, y recién después
+   * se dibuja: el fondo del recuadro tiene que ir antes que el texto y su alto
+   * depende de cuántas filas entren en cada hoja.
+   */
   fields(items: Field[], cols = 3): this {
     const { doc } = this;
-    const gap = 10;
-    const colW = (this.contentWidth - gap * (cols - 1)) / cols;
-    let col = 0;
-    let rowTop = doc.y;
-    let rowH = 0;
+    const pad = 10;
+    const gap = 12;
+    const rowGap = 8;
+    const labelH = 10;
+    const innerW = this.contentWidth - pad * 2;
+    const colW = (innerW - gap * (cols - 1)) / cols;
 
-    const flushRow = () => {
-      doc.y = rowTop + rowH + 8;
-      rowTop = doc.y;
-      rowH = 0;
+    type Cell = { x: number; width: number; label: string; value: string };
+    const rows: { cells: Cell[]; height: number }[] = [];
+    let current: Cell[] = [];
+    let currentH = 0;
+    let col = 0;
+    const flush = () => {
+      if (current.length) rows.push({ cells: current, height: currentH });
+      current = [];
+      currentH = 0;
       col = 0;
     };
 
+    doc.font(FONT.bold).fontSize(8.5);
     for (const item of items) {
       const span = item.full ? cols : 1;
-      if (col > 0 && col + span > cols) flushRow();
-
+      if (col > 0 && col + span > cols) flush();
       const width = colW * span + gap * (span - 1);
-      const x = PAGE.margins.left + col * (colW + gap);
       const value = sanitize(item.value ?? '') || '-';
-
-      const valueH = doc
-        .font(FONT.regular)
-        .fontSize(9)
-        .heightOfString(value, { width });
-      const cellH = 11 + valueH;
-      if (rowTop + cellH > this.bottomLimit) {
-        doc.addPage();
-        rowTop = doc.y;
-        rowH = 0;
-        col = 0;
-      }
-
-      doc.font(FONT.regular).fontSize(6.8).fillColor(COLOR.muted);
-      doc.text(sanitize(item.label).toUpperCase(), x, rowTop, {
+      current.push({
+        x: PAGE.margins.left + pad + col * (colW + gap),
         width,
-        characterSpacing: 0.3,
+        label: sanitize(item.label).toUpperCase(),
+        value,
       });
-      doc.font(FONT.bold).fontSize(9).fillColor(COLOR.ink);
-      doc.text(value, x, rowTop + 10, { width });
-
-      rowH = Math.max(rowH, cellH);
+      currentH = Math.max(
+        currentH,
+        labelH + doc.heightOfString(value, { width }),
+      );
       col += span;
-      if (col >= cols) flushRow();
+      if (col >= cols) flush();
+    }
+    flush();
+
+    // Reparto entre páginas: cada tramo es un recuadro.
+    let i = 0;
+    while (i < rows.length) {
+      if (doc.y + pad * 2 + rows[i].height > this.bottomLimit) {
+        doc.addPage();
+      }
+      const top = doc.y;
+      let bottom = top + pad;
+      const segment: { y: number; row: (typeof rows)[number] }[] = [];
+      while (
+        i < rows.length &&
+        (segment.length === 0 ||
+          bottom + rowGap + rows[i].height + pad <= this.bottomLimit)
+      ) {
+        if (segment.length) bottom += rowGap;
+        segment.push({ y: bottom, row: rows[i] });
+        bottom += rows[i].height;
+        i++;
+      }
+      bottom += pad;
+
+      doc
+        .roundedRect(
+          PAGE.margins.left,
+          top,
+          this.contentWidth,
+          bottom - top,
+          RADIUS,
+        )
+        .lineWidth(0.5)
+        .fillColor(COLOR.soft)
+        .strokeColor(COLOR.line)
+        .fillAndStroke();
+
+      for (const { y, row } of segment) {
+        for (const cell of row.cells) {
+          doc.font(FONT.regular).fontSize(6.5).fillColor(COLOR.muted);
+          doc.text(cell.label, cell.x, y, {
+            width: cell.width,
+            characterSpacing: 0.6,
+            lineBreak: false,
+            ellipsis: true,
+          });
+          doc.font(FONT.bold).fontSize(8.5).fillColor(COLOR.ink);
+          doc.text(cell.value, cell.x, y + labelH, { width: cell.width });
+        }
+      }
+      doc.y = bottom + (i < rows.length ? 0 : 2);
     }
 
-    if (col > 0) flushRow();
     doc.x = PAGE.margins.left;
+    doc.fillColor(COLOR.ink).font(FONT.regular).fontSize(9);
     return this;
   }
 
-  /** Tabla con encabezado repetido en cada página, zebra y fila de total. */
+  /** Tabla con encabezado repetido en cada página y fila de total. */
   table(opts: TableOptions): this {
     const { doc } = this;
     const fontSize = opts.fontSize ?? 8.5;
-    const padX = 5;
-    const padY = 4;
+    const padX = 6;
+    const padY = 5;
+    const headH = 18;
     const totalWeight = opts.columns.reduce((a, c) => a + c.width, 0);
     const widths = opts.columns.map(
       (c) => (c.width / totalWeight) * this.contentWidth,
@@ -528,27 +638,32 @@ export class PdfReport {
     );
 
     const drawHeadRow = () => {
-      this.ensure(20);
+      this.ensure(headH + 20);
       const y = doc.y;
       doc
-        .rect(PAGE.margins.left, y, this.contentWidth, 17)
+        .rect(PAGE.margins.left, y, this.contentWidth, headH)
         .fillColor(COLOR.primary)
         .fill();
       doc
         .font(FONT.bold)
-        .fontSize(fontSize - 0.5)
-        .fillColor('#FFFFFF');
+        .fontSize(fontSize - 1.5)
+        .fillColor(COLOR.white);
       opts.columns.forEach((c, i) => {
-        doc.text(sanitize(c.label).toUpperCase(), xs[i] + padX, y + 5, {
+        doc.text(sanitize(c.label).toUpperCase(), xs[i] + padX, y + 6.5, {
           width: widths[i] - padX * 2,
           align: c.align ?? 'left',
           lineBreak: false,
+          characterSpacing: 0.5,
         });
       });
-      doc.y = y + 17;
+      doc.y = y + headH;
     };
 
-    const drawRow = (cells: unknown[], index: number, bold = false) => {
+    const drawRow = (
+      cells: unknown[],
+      style: 'row' | 'subtotal' | 'total' = 'row',
+    ) => {
+      const bold = style !== 'row';
       // Celda nula = dato inexistente ("-"); cadena vacía = celda a propósito en
       // blanco (columnas que no aplican en la fila de totales).
       const texts = cells.map((c) =>
@@ -569,22 +684,17 @@ export class PdfReport {
       }
 
       const y = doc.y;
-      if (bold) {
+      if (style !== 'row') {
         doc
           .rect(PAGE.margins.left, y, this.contentWidth, h)
-          .fillColor(COLOR.band)
-          .fill();
-      } else if (index % 2 === 1) {
-        doc
-          .rect(PAGE.margins.left, y, this.contentWidth, h)
-          .fillColor(COLOR.zebra)
+          .fillColor(style === 'total' ? COLOR.primary : COLOR.band)
           .fill();
       }
 
       doc
         .font(bold ? FONT.bold : FONT.regular)
         .fontSize(fontSize)
-        .fillColor(COLOR.ink);
+        .fillColor(style === 'total' ? COLOR.white : COLOR.ink);
       texts.forEach((t, i) => {
         doc.text(t, xs[i] + padX, y + padY, {
           width: widths[i] - padX * 2,
@@ -592,12 +702,14 @@ export class PdfReport {
         });
       });
 
-      doc
-        .moveTo(PAGE.margins.left, y + h)
-        .lineTo(PAGE.margins.left + this.contentWidth, y + h)
-        .lineWidth(0.4)
-        .strokeColor(COLOR.line)
-        .stroke();
+      if (style === 'row') {
+        doc
+          .moveTo(PAGE.margins.left, y + h)
+          .lineTo(PAGE.margins.left + this.contentWidth, y + h)
+          .lineWidth(0.5)
+          .strokeColor(COLOR.line)
+          .stroke();
+      }
       doc.y = y + h;
     };
 
@@ -605,62 +717,79 @@ export class PdfReport {
     if (!opts.rows.length) {
       doc.font(FONT.italic).fontSize(fontSize).fillColor(COLOR.muted);
       const text = sanitize(opts.emptyText || 'Sin movimientos registrados.');
-      doc.text(text, PAGE.margins.left + padX, doc.y + padY, {
+      const y = doc.y;
+      doc.text(text, PAGE.margins.left + padX, y + padY, {
         width: this.contentWidth - padX * 2,
       });
       doc.y += padY;
+      doc
+        .moveTo(PAGE.margins.left, doc.y)
+        .lineTo(PAGE.margins.left + this.contentWidth, doc.y)
+        .lineWidth(0.5)
+        .strokeColor(COLOR.line)
+        .stroke();
     } else {
-      opts.rows.forEach((row, i) => drawRow(row, i));
+      opts.rows.forEach((row) => drawRow(row));
     }
-    if (opts.totalRow) drawRow(opts.totalRow, 0, true);
+    if (opts.totalRow) drawRow(opts.totalRow, opts.totalStyle ?? 'subtotal');
 
     doc.x = PAGE.margins.left;
     doc.fillColor(COLOR.ink).font(FONT.regular).fontSize(9);
     return this;
   }
 
-  /** Panel de totales alineado a la derecha; la última fila va destacada. */
+  /**
+   * Panel de totales alineado a la derecha: los subtotales en gris y la fila
+   * destacada en una banda de color.
+   */
   totals(rows: { label: string; value: string; strong?: boolean }[]): this {
     const { doc } = this;
     const w = 260;
     const x = doc.page.width - PAGE.margins.right - w;
-    const lineH = 16;
-    const strongH = 24;
-    const height =
-      rows.reduce((a, r) => a + (r.strong ? strongH : lineH), 0) + 12;
+    const lineH = 17;
+    const strongH = 26;
+    const height = rows.reduce((a, r) => a + (r.strong ? strongH : lineH), 0);
 
-    this.ensure(height + 10);
-    doc.y += 10;
+    this.ensure(height + 12);
+    doc.y += 12;
     const top = doc.y;
-    doc.rect(x, top, w, height).fillColor(COLOR.band).fill();
-    doc.rect(x, top, w, height).lineWidth(0.6).strokeColor(COLOR.line).stroke();
+    let y = top;
 
-    let y = top + 6;
     rows.forEach((r) => {
       const strong = !!r.strong;
+      const h = strong ? strongH : lineH;
       if (strong) {
+        doc.roundedRect(x, y, w, h, RADIUS).fillColor(COLOR.primary).fill();
+      } else {
         doc
-          .moveTo(x + 8, y + 1)
-          .lineTo(x + w - 8, y + 1)
-          .lineWidth(0.6)
+          .moveTo(x, y + h)
+          .lineTo(x + w, y + h)
+          .lineWidth(0.5)
           .strokeColor(COLOR.line)
           .stroke();
-        y += 5;
       }
+      const size = strong ? 10.5 : 8.5;
+      const textY = y + (h - size) / 2 + 1;
       doc
         .font(strong ? FONT.bold : FONT.regular)
-        .fontSize(strong ? 11 : 9)
-        .fillColor(strong ? COLOR.primary : COLOR.ink);
-      doc.text(sanitize(r.label), x + 10, y, { width: w * 0.55 - 10 });
-      doc.text(sanitize(r.value), x + w * 0.55, y, {
+        .fontSize(size)
+        .fillColor(strong ? COLOR.white : COLOR.muted);
+      doc.text(sanitize(r.label), x + 10, textY, {
+        width: w * 0.55 - 10,
+        lineBreak: false,
+      });
+      doc.font(FONT.bold);
+      doc.text(sanitize(r.value), x + w * 0.55, textY, {
         width: w * 0.45 - 10,
         align: 'right',
+        lineBreak: false,
       });
-      y += strong ? strongH - 5 : lineH;
+      y += h;
     });
 
     doc.y = top + height;
     doc.x = PAGE.margins.left;
+    doc.fillColor(COLOR.ink).font(FONT.regular).fontSize(9);
     return this;
   }
 
@@ -697,7 +826,7 @@ export class PdfReport {
         .moveTo(x, y)
         .lineTo(x + w, y)
         .lineWidth(0.6)
-        .strokeColor(COLOR.line)
+        .strokeColor(COLOR.muted)
         .stroke();
       doc.font(FONT.regular).fontSize(7.5).fillColor(COLOR.muted);
       doc.text(sanitize(label), x, y + 5, { width: w, align: 'center' });

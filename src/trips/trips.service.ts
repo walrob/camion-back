@@ -312,7 +312,7 @@ export class TripsService {
         text: TRIP_STATUS_LABELS[trip.status] ?? trip.status,
         tone:
           trip.status === TripStatus.CANCELED
-            ? 'warn'
+            ? 'danger'
             : trip.status === TripStatus.FINISHED
               ? 'ok'
               : 'neutral',

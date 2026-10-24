@@ -224,6 +224,7 @@ export class MaintenanceService {
       ],
       rows: items.map((it) => [it.name, it.cost != null ? money(it.cost) : '']),
       totalRow: ['Total', money(order.cost)],
+      totalStyle: 'total',
       emptyText: 'Sin repuestos ni tareas detalladas.',
     });
 
