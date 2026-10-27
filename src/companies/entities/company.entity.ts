@@ -95,11 +95,12 @@ export class Company {
   trialEndsAt: Date;
 
   /**
-   * Paso del onboarding guiado que falta completar. `0` = terminado.
+   * Visibilidad de la guía de primeros pasos del panel: `> 0` = visible,
+   * `0` = oculta.
    *
-   * El middleware del front lo usa para llevar a la empresa nueva por la carga
-   * inicial en vez de dejarla frente a un sistema vacío, que es la forma más
-   * rápida de perder a alguien que recién se dio de alta.
+   * Antes era el paso de un asistente obligatorio; el nombre quedó por no
+   * migrar la columna. El progreso ya no se guarda acá: lo calcula
+   * `OnboardingService` sobre los datos reales.
    */
   @Column('int', { default: 0 })
   onboardingStep: number;

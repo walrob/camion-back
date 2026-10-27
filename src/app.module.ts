@@ -12,6 +12,7 @@ import { StorageModule } from './common/storage/storage.module';
 import { AttachmentsModule } from './common/attachments/attachments.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { OnboardingModule } from './onboarding/onboarding.module';
 import { FleetModule } from './fleet/fleet.module';
 import { DriversModule } from './drivers/drivers.module';
 import { HrModule } from './hr/hr.module';
@@ -113,6 +114,7 @@ import { TenantContextMiddleware } from './common/tenant/tenant-context.middlewa
     AttachmentsModule,
     NotificationsModule,
     DashboardModule,
+    OnboardingModule,
     FleetModule,
     DriversModule,
     AlertsModule,

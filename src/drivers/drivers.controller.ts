@@ -17,7 +17,7 @@ import { Response } from 'express';
 import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { DriversService } from './drivers.service';
 import { DriversExcelService } from './drivers-excel.service';
-import { CreateDriverDto } from './dto/create-driver.dto';
+import { CreateDriverDto, DriverAccessDto } from './dto/create-driver.dto';
 import { UpdateDriverDto } from './dto/update-driver.dto';
 import { DriverStatus } from 'src/common/enums/driverStatus.enum';
 import { Auth } from 'src/auth/decorators/auth.decorator';
@@ -134,6 +134,17 @@ export class DriversController {
   @Auth(Role.ADMIN, Role.DISPATCHER, Role.MANAGER, Role.HR)
   findOne(@Param('id') id: string) {
     return this.driversService.findOne(id);
+  }
+
+  /** Crea la cuenta de acceso (rol Chofer) de un chofer cargado sin ella. */
+  @Post(':id/access')
+  @Auth(Role.ADMIN, Role.DISPATCHER)
+  grantAccess(
+    @Param('id') id: string,
+    @Body() dto: DriverAccessDto,
+    @ActiveUser() user: ActiveUserInterface,
+  ) {
+    return this.driversService.grantAccess(id, dto, user);
   }
 
   @Patch(':id')

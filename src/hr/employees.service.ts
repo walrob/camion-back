@@ -13,6 +13,8 @@ import { Driver } from 'src/drivers/entities/driver.entity';
 import { DriverStatus } from 'src/common/enums/driverStatus.enum';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
+import { GrantAccessDto } from './dto/grant-access.dto';
+import { LimitsService } from 'src/plans/limits.service';
 import { Role } from 'src/common/enums/role.enum';
 import { EmploymentStatus } from 'src/common/enums/employmentStatus.enum';
 import { EmploymentMovementType } from 'src/common/enums/employmentMovement.enum';
@@ -44,6 +46,7 @@ export class EmployeesService {
     private readonly usersService: UsersService,
     private readonly movementsService: EmploymentMovementsService,
     private readonly catalogsService: CatalogsService,
+    private readonly limitsService: LimitsService,
   ) {}
 
   async create(
@@ -65,7 +68,13 @@ export class EmployeesService {
     // Alta opcional de la cuenta de acceso. Si ya se pasó un userId, se vincula
     // ese User existente y se ignoran las credenciales.
     if (!userId && email) {
-      userId = await this.createAccount(dto, email, password, role);
+      userId = await this.createAccount(
+        dto,
+        email,
+        password,
+        role,
+        user.companyId,
+      );
     }
 
     const employee = this.employeesRepository.create({
@@ -136,12 +145,41 @@ export class EmployeesService {
     );
   }
 
+  /**
+   * Acceso a la app para un legajo que ya existe.
+   *
+   * Hasta ahora el acceso sólo se podía crear en el alta: si ahí no se tildaba,
+   * el legajo quedaba sin forma de entrar y la única salida era borrarlo y
+   * cargarlo de nuevo, perdiendo su historial.
+   */
+  async grantAccess(
+    id: string,
+    dto: GrantAccessDto,
+    user: ActiveUserInterface,
+  ): Promise<Employee> {
+    const employee = await this.findOne(id);
+    if (employee.userId) {
+      throw new ConflictException('Este empleado ya tiene acceso a la app.');
+    }
+
+    const userId = await this.createAccount(
+      employee,
+      dto.email,
+      dto.password,
+      dto.role,
+      user.companyId,
+    );
+    await this.employeesRepository.update(id, { userId, updatedBy: user.id });
+    return this.findOne(id);
+  }
+
   /** Crea el User de acceso con el rol derivado del puesto y devuelve su id. */
   private async createAccount(
-    dto: CreateEmployeeDto,
+    dto: Pick<CreateEmployeeDto, 'firstName' | 'lastName' | 'position' | 'phone'>,
     email: string,
-    password?: string,
-    role?: CreateEmployeeDto['role'],
+    password: string | undefined,
+    role: Role | undefined,
+    companyId: string,
   ): Promise<string> {
     if (!password) {
       throw new BadRequestException(
@@ -158,6 +196,9 @@ export class EmployeesService {
     // (docs/CONFIGURACION.md §5.1).
     const derivedRole =
       role ?? ((await this.catalogsService.rolDePuesto(dto.position)) as Role);
+    // Mismo control que una invitación: el plan decide qué roles hay. Sin esto,
+    // el alta de un legajo era un atajo para crear un rol que el plan no tiene.
+    await this.limitsService.assertRolPermitido(companyId, derivedRole);
 
     const newUser = await this.usersService.create({
       email,
@@ -263,6 +304,7 @@ export class EmployeesService {
     const employee = await this.employeesRepository.findOne({
       where: { id },
       relations: [
+        'user',
         'certifications',
         'assignments',
         'assignments.truck',

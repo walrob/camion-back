@@ -7,5 +7,5 @@ import { CreateDriverDto } from './create-driver.dto';
  * exclusivamente vía los endpoints de Employee (PATCH /hr/employees/:id).
  */
 export class UpdateDriverDto extends PartialType(
-  OmitType(CreateDriverDto, ['employeeId'] as const),
+  OmitType(CreateDriverDto, ['employeeId', 'person'] as const),
 ) {}

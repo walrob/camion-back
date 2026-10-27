@@ -113,20 +113,4 @@ export class CompaniesController {
 
     return this.companiesService.actualizar(user.companyId, { logoUrl });
   }
-
-  @Patch('me/onboarding')
-  @ApiBearerAuth()
-  @Auth(Role.ADMIN)
-  @ApiOperation({
-    summary: 'Avanza el onboarding guiado. `step: 0` lo da por terminado.',
-  })
-  onboarding(
-    @Body() body: { step: number },
-    @ActiveUser() user: ActiveUserInterface,
-  ) {
-    return this.companiesService.actualizarOnboarding(
-      user.companyId,
-      body.step,
-    );
-  }
 }

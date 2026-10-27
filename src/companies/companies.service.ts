@@ -169,20 +169,6 @@ export class CompaniesService {
     return this.companiesRepository.findOne({ where: { id } });
   }
 
-  /** Avance del onboarding guiado. */
-  async actualizarOnboarding(
-    companyId: string,
-    step: number,
-  ): Promise<Company> {
-    const company = await this.companiesRepository.findOne({
-      where: { id: companyId },
-    });
-    if (!company) throw new NotFoundException('Empresa no encontrada.');
-
-    company.onboardingStep = step;
-    return this.companiesRepository.save(company);
-  }
-
   /** Datos fiscales y de presentación de la empresa. */
   async actualizar(
     companyId: string,

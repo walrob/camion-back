@@ -13,6 +13,7 @@ import { Employee } from 'src/hr/entities/employee.entity';
 import { CreateDriverDto } from './dto/create-driver.dto';
 import { UpdateDriverDto } from './dto/update-driver.dto';
 import { DriverStatus } from 'src/common/enums/driverStatus.enum';
+import { EmployeesService } from 'src/hr/employees.service';
 
 const activeUser = { id: 'user-1', companyId: 'company-test', role: 'admin' };
 
@@ -27,13 +28,19 @@ describe('DriversService', () => {
   let service: DriversService;
   let driversRepo: ReturnType<typeof mockRepo>;
   let employeesRepo: ReturnType<typeof mockRepo>;
+  let employeesService: { create: jest.Mock; grantAccess: jest.Mock };
 
   beforeEach(async () => {
+    employeesService = {
+      create: jest.fn().mockResolvedValue({ id: 'emp-nuevo' }),
+      grantAccess: jest.fn().mockResolvedValue(undefined),
+    };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         DriversService,
         { provide: getRepositoryToken(Driver), useFactory: mockRepo },
         { provide: getRepositoryToken(Employee), useFactory: mockRepo },
+        { provide: EmployeesService, useValue: employeesService },
       ],
     }).compile();
 
@@ -94,6 +101,63 @@ describe('DriversService', () => {
       ).rejects.toBeInstanceOf(NotFoundException);
       expect(driversRepo.save).not.toHaveBeenCalled();
     });
+
+    it('con `person` crea el legajo mínimo con puesto Chofer y le carga la licencia', async () => {
+      // El alta del legajo ya deja creado el perfil de conducción.
+      const perfil = { id: 'drv-9', employeeId: 'emp-nuevo' };
+      driversRepo.findOne
+        .mockResolvedValueOnce(perfil)
+        .mockResolvedValueOnce({ ...perfil, licenseNumber: 'B-9' });
+      driversRepo.save.mockImplementation(async (d) => d);
+
+      const result = await service.create(
+        {
+          person: {
+            firstName: 'Ana',
+            lastName: 'Pérez',
+            documentId: '30111222',
+            email: 'ana@flota.com',
+            password: 'secreto1',
+          },
+          licenseNumber: 'B-9',
+        },
+        activeUser,
+      );
+
+      expect(employeesService.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          firstName: 'Ana',
+          documentId: '30111222',
+          email: 'ana@flota.com',
+          position: 'driver',
+        }),
+        activeUser,
+      );
+      expect(driversRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'drv-9',
+          employeeId: 'emp-nuevo',
+          licenseNumber: 'B-9',
+        }),
+      );
+      expect(driversRepo.create).not.toHaveBeenCalled();
+      expect(result.licenseNumber).toBe('B-9');
+    });
+  });
+
+  describe('grantAccess', () => {
+    it('crea la cuenta sobre el legajo del chofer', async () => {
+      driversRepo.findOne.mockResolvedValue({ id: 'drv-1', employeeId: 'emp-1' });
+      const dto = { email: 'ana@flota.com', password: 'secreto1' };
+
+      await service.grantAccess('drv-1', dto, activeUser);
+
+      expect(employeesService.grantAccess).toHaveBeenCalledWith(
+        'emp-1',
+        dto,
+        activeUser,
+      );
+    });
   });
 
   describe('update', () => {
@@ -130,6 +194,23 @@ describe('Driver DTO validation', () => {
     await expect(
       pipe.transform(
         { licenseNumber: 'B-1' },
+        { type: 'body', metatype: CreateDriverDto },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('acepta el alta con legajo mínimo en lugar de employeeId', async () => {
+    const result = await pipe.transform(
+      { person: { firstName: 'Ana', lastName: 'Pérez', documentId: '30111222' } },
+      { type: 'body', metatype: CreateDriverDto },
+    );
+    expect(result.person.documentId).toBe('30111222');
+  });
+
+  it('rechaza un legajo mínimo sin documento', async () => {
+    await expect(
+      pipe.transform(
+        { person: { firstName: 'Ana', lastName: 'Pérez' } },
         { type: 'body', metatype: CreateDriverDto },
       ),
     ).rejects.toBeInstanceOf(BadRequestException);

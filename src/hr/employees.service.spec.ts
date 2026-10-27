@@ -10,6 +10,7 @@ import { EmployeePosition } from 'src/common/enums/employeePosition.enum';
 import { CatalogsService } from 'src/catalogs/catalogs.service';
 import { EmploymentMovementType } from 'src/common/enums/employmentMovement.enum';
 import { Role } from 'src/common/enums/role.enum';
+import { LimitsService } from 'src/plans/limits.service';
 
 const activeUser = { id: 'admin-1', companyId: 'company-test', role: 'admin' };
 
@@ -51,6 +52,7 @@ describe('EmployeesService.create (alta con cuenta opcional)', () => {
         { provide: getRepositoryToken(Employee), useValue: employeesRepo },
         { provide: getRepositoryToken(Driver), useValue: driversRepo },
         { provide: UsersService, useValue: usersService },
+        { provide: LimitsService, useValue: { assertRolPermitido: jest.fn() } },
         {
           provide: EmploymentMovementsService,
           useValue: movementsService,
@@ -240,6 +242,7 @@ describe('EmployeesService.update (cambio de puesto)', () => {
         { provide: getRepositoryToken(Employee), useValue: employeesRepo },
         { provide: getRepositoryToken(Driver), useValue: driversRepo },
         { provide: UsersService, useValue: {} },
+        { provide: LimitsService, useValue: {} },
         { provide: EmploymentMovementsService, useValue: {} },
         {
           provide: CatalogsService,
@@ -280,5 +283,106 @@ describe('EmployeesService.update (cambio de puesto)', () => {
       activeUser,
     );
     expect(driversRepo.save).not.toHaveBeenCalled();
+  });
+});
+
+describe('EmployeesService.grantAccess (acceso para un legajo existente)', () => {
+  let service: EmployeesService;
+  let employeesRepo: { findOne: jest.Mock; update: jest.Mock };
+  let usersService: { findOneByEmail: jest.Mock; create: jest.Mock };
+  let limitsService: { assertRolPermitido: jest.Mock };
+
+  const existing = {
+    id: 'emp-1',
+    firstName: 'Juan',
+    lastName: 'Gómez',
+    documentId: '30123456',
+    position: EmployeePosition.DRIVER,
+    phone: '1155550000',
+    userId: null as string | null,
+  };
+
+  beforeEach(async () => {
+    employeesRepo = {
+      findOne: jest.fn().mockResolvedValue({ ...existing }),
+      update: jest.fn().mockResolvedValue(undefined),
+    };
+    usersService = {
+      findOneByEmail: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue({ id: 'user-9' }),
+    };
+    limitsService = { assertRolPermitido: jest.fn() };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        EmployeesService,
+        { provide: getRepositoryToken(Employee), useValue: employeesRepo },
+        { provide: getRepositoryToken(Driver), useValue: {} },
+        { provide: UsersService, useValue: usersService },
+        { provide: EmploymentMovementsService, useValue: {} },
+        { provide: LimitsService, useValue: limitsService },
+        {
+          provide: CatalogsService,
+          useValue: {
+            rolDePuesto: jest.fn(async (p?: string) =>
+              p === 'mechanic' ? 'maintenance' : 'driver',
+            ),
+          },
+        },
+      ],
+    }).compile();
+
+    service = module.get(EmployeesService);
+  });
+
+  it('crea la cuenta con el rol del puesto y la vincula al legajo', async () => {
+    await service.grantAccess(
+      'emp-1',
+      { email: 'juan@flota.com', password: 'secreto1' },
+      activeUser,
+    );
+
+    expect(limitsService.assertRolPermitido).toHaveBeenCalledWith(
+      'company-test',
+      Role.DRIVER,
+    );
+    expect(usersService.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: 'juan@flota.com',
+        name: 'Juan Gómez',
+        role: Role.DRIVER,
+        phone: '1155550000',
+      }),
+    );
+    expect(employeesRepo.update).toHaveBeenCalledWith('emp-1', {
+      userId: 'user-9',
+      updatedBy: 'admin-1',
+    });
+  });
+
+  it('rechaza un legajo que ya tiene acceso', async () => {
+    employeesRepo.findOne.mockResolvedValue({ ...existing, userId: 'user-1' });
+    await expect(
+      service.grantAccess(
+        'emp-1',
+        { email: 'juan@flota.com', password: 'secreto1' },
+        activeUser,
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(usersService.create).not.toHaveBeenCalled();
+  });
+
+  it('no crea la cuenta si el plan no permite el rol', async () => {
+    limitsService.assertRolPermitido.mockRejectedValue(
+      new BadRequestException('ROLE_NOT_IN_PLAN'),
+    );
+    await expect(
+      service.grantAccess(
+        'emp-1',
+        { email: 'ana@flota.com', password: 'secreto1', role: Role.AUDITOR },
+        activeUser,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(usersService.create).not.toHaveBeenCalled();
   });
 });

@@ -22,6 +22,7 @@ import { AssignmentsService } from './assignments.service';
 import { EmploymentMovementsService } from './employment-movements.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
+import { GrantAccessDto } from './dto/grant-access.dto';
 import { EmployeePosition } from 'src/common/enums/employeePosition.enum';
 import { EmploymentStatus } from 'src/common/enums/employmentStatus.enum';
 import { Auth } from 'src/auth/decorators/auth.decorator';
@@ -156,6 +157,17 @@ export class EmployeesController {
   @Auth(Role.ADMIN, Role.HR, Role.MANAGER)
   movements(@Param('id') id: string) {
     return this.movementsService.listByEmployee(id);
+  }
+
+  /** Crea la cuenta de acceso de un legajo que se dio de alta sin ella. */
+  @Post(':id/access')
+  @Auth(Role.ADMIN, Role.HR)
+  grantAccess(
+    @Param('id') id: string,
+    @Body() dto: GrantAccessDto,
+    @ActiveUser() user: ActiveUserInterface,
+  ) {
+    return this.employeesService.grantAccess(id, dto, user);
   }
 
   @Patch(':id')

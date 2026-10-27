@@ -6,11 +6,14 @@ import { DriversService } from './drivers.service';
 import { DriversExcelService } from './drivers-excel.service';
 import { DriversController } from './drivers.controller';
 import { AuthModule } from 'src/auth/auth.module';
+import { HrModule } from 'src/hr/hr.module';
 
 @Module({
   imports: [
     TenantTypeOrmModule.forFeature([Driver, Employee]),
     forwardRef(() => AuthModule),
+    // Alta del chofer con legajo mínimo y acceso a la app desde Choferes.
+    HrModule,
   ],
   controllers: [DriversController],
   providers: [DriversService, DriversExcelService],

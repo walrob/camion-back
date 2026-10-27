@@ -8,7 +8,9 @@ import { In, Repository, SelectQueryBuilder } from 'typeorm';
 import { IPaginationOptions, Pagination } from 'nestjs-typeorm-paginate';
 import { Driver } from './entities/driver.entity';
 import { Employee } from 'src/hr/entities/employee.entity';
-import { CreateDriverDto } from './dto/create-driver.dto';
+import { CreateDriverDto, DriverAccessDto } from './dto/create-driver.dto';
+import { EmployeesService } from 'src/hr/employees.service';
+import { EmployeePosition } from 'src/common/enums/employeePosition.enum';
 import { UpdateDriverDto } from './dto/update-driver.dto';
 import { DriverStatus } from 'src/common/enums/driverStatus.enum';
 import { ActiveUserInterface } from 'src/common/interfaces/active-user.interface';
@@ -35,6 +37,7 @@ export class DriversService {
     private readonly driversRepository: Repository<Driver>,
     @InjectRepository(Employee)
     private readonly employeesRepository: Repository<Employee>,
+    private readonly employeesService: EmployeesService,
   ) {}
 
   /**
@@ -42,6 +45,8 @@ export class DriversService {
    * User ni datos personales: el legajo es la fuente de verdad. Relación 1:1.
    */
   async create(dto: CreateDriverDto, user: ActiveUserInterface): Promise<Driver> {
+    if (dto.person) return this.createWithPerson(dto, user);
+
     const employee = await this.employeesRepository.findOne({
       where: { id: dto.employeeId },
     });
@@ -72,6 +77,57 @@ export class DriversService {
 
     const saved = await this.driversRepository.save(driver);
     return this.findOne(saved.id);
+  }
+
+  /**
+   * Alta del chofer con un legajo mínimo, sin pasar por RRHH.
+   *
+   * El legajo lo crea `EmployeesService` para que valga lo mismo que en RRHH:
+   * documento único, cuenta con el control de roles del plan y, por ser puesto
+   * Chofer, el perfil de conducción ya creado. Acá sólo se le cargan los datos
+   * de conducción.
+   */
+  private async createWithPerson(
+    dto: CreateDriverDto,
+    user: ActiveUserInterface,
+  ): Promise<Driver> {
+    const employee = await this.employeesService.create(
+      { ...dto.person!, position: EmployeePosition.DRIVER },
+      user,
+    );
+
+    const driver =
+      (await this.driversRepository.findOne({
+        where: { employeeId: employee.id },
+      })) ??
+      this.driversRepository.create({
+        employeeId: employee.id,
+        createdBy: user.id,
+      });
+    Object.assign(driver, {
+      licenseNumber: dto.licenseNumber,
+      licenseType: dto.licenseType,
+      licenseExpiry: dto.licenseExpiry,
+      status: dto.status ?? DriverStatus.ACTIVE,
+      notes: dto.notes,
+      updatedBy: user.id,
+    });
+    const saved = await this.driversRepository.save(driver);
+    return this.findOne(saved.id);
+  }
+
+  /**
+   * Acceso a la app para un chofer cargado sin cuenta. Desde Choferes el rol es
+   * siempre Chofer: el `DriverAccessDto` no deja elegir otro.
+   */
+  async grantAccess(
+    id: string,
+    dto: DriverAccessDto,
+    user: ActiveUserInterface,
+  ): Promise<Driver> {
+    const driver = await this.findOne(id);
+    await this.employeesService.grantAccess(driver.employeeId, dto, user);
+    return this.findOne(id);
   }
 
   paginate(
