@@ -4,8 +4,7 @@ import { createHmac, timingSafeEqual } from 'crypto';
  * Reglas de los emails de activación y re-enganche, sin dependencias de Nest
  * ni de la base para poder testearlas solas (`engagement.rules.spec.ts`).
  *
- * Es el mismo diseño que usa Aturna, adaptado a una flota: lo que en Aturna es
- * "dar el primer turno" acá es "cargar el primer viaje".
+ * La acción que mide la activación de una empresa es cargar su primer viaje.
  */
 
 export enum EngagementSegment {
