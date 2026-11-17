@@ -34,7 +34,7 @@ export const EMAIL_SIN_VERIFICAR =
   'o pedí que te reenviemos el mensaje.';
 
 /** Cuántas horas vale el link de confirmación. */
-const HORAS_DE_VERIFICACION = 24;
+export const HORAS_DE_VERIFICACION = 24;
 
 /**
  * Marca del token de confirmación.
@@ -42,7 +42,7 @@ const HORAS_DE_VERIFICACION = 24;
  * Sin ella, un token de sesión cualquiera pasaría por token de verificación:
  * los firma la misma clave y ambos llevan `sub`.
  */
-const PROPOSITO_VERIFICACION = 'verify-email';
+export const PROPOSITO_VERIFICACION = 'verify-email';
 
 @Injectable()
 export class AuthService {

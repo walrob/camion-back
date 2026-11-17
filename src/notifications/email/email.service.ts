@@ -129,6 +129,12 @@ export class EmailService {
     color: string;
     cuerpo: string;
     cta?: { texto: string; url: string };
+    /** Quién firma. Por defecto, "Equipo CamioNex". */
+    firma?: string;
+    /** HTML chico debajo de la firma (por ejemplo, el link de baja). */
+    pie?: string;
+    /** HTML entre el botón y la firma. */
+    despuesDelBoton?: string;
   }): string {
     const boton = params.cta
       ? `<p style="margin: 24px 0;">
@@ -137,15 +143,76 @@ export class EmailService {
           </a>
         </p>`
       : '';
+    const pie = params.pie
+      ? `<p style="font-size: 12px; color: #999; margin: 16px 0 0;">${params.pie}</p>`
+      : '';
 
     return `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; border: 1px solid #e0e0e0; border-radius: 10px; padding: 24px; background-color: #ffffff;">
         <h2 style="color: ${params.color}; margin-top: 0;">${params.titulo}</h2>
         ${params.cuerpo}
         ${boton}
+        ${params.despuesDelBoton ?? ''}
         <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-        <p style="font-size: 13px; color: #777; margin: 0;">Saludos,<br/><strong>Equipo CamioNex</strong></p>
+        <p style="font-size: 13px; color: #777; margin: 0;">Saludos,<br/><strong>${params.firma ?? 'Equipo CamioNex'}</strong></p>
+        ${pie}
       </div>`;
+  }
+
+  // ─────────────────── Activación y re-enganche ───────────────────────────
+
+  /**
+   * Emails de activación y re-enganche (`EngagementService`). Mismo maquetado
+   * que el resto, firmados por una persona y con el link de baja al pie.
+   *
+   * Las respuestas van a `EMAIL_REPLY_TO`: cada uno de estos emails cierra con
+   * "respondé este mail", así que tienen que llegar a una casilla que alguien
+   * lea. El encabezado `List-Unsubscribe` es la baja en un clic que ofrecen
+   * Gmail y Outlook (RFC 8058); sin él, quien no quiere recibirlos marca spam.
+   */
+  async sendEngagementEmail(datos: {
+    to: string;
+    subject: string;
+    titulo: string;
+    parrafos: string[];
+    cta: { texto: string; url: string };
+    nota?: string;
+    cierre: string;
+    firma: string;
+    bajaUrl?: string | null;
+    bajaUnClicUrl?: string | null;
+  }) {
+    const cuerpo = datos.parrafos
+      .map((p) => `<p style="font-size: 16px; color: #333;">${p}</p>`)
+      .join('');
+    // La nota aclara el botón ("el enlace vence en 24 horas"): va debajo.
+    const nota = datos.nota
+      ? `<p style="font-size: 13px; color: #777; margin-top: -8px;">${datos.nota}</p>`
+      : '';
+
+    await this.despachar({
+      to: datos.to,
+      replyTo: process.env.EMAIL_REPLY_TO || undefined,
+      subject: datos.subject,
+      headers: datos.bajaUnClicUrl
+        ? {
+            'List-Unsubscribe': `<${datos.bajaUnClicUrl}>`,
+            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+          }
+        : undefined,
+      html: this.plantilla({
+        titulo: datos.titulo,
+        color: '#0b57d0',
+        cuerpo,
+        cta: datos.cta,
+        // El cierre va después del botón: es lo último que se lee antes de la firma.
+        despuesDelBoton: `${nota}<p style="font-size: 14px; color: #555;">${datos.cierre}</p>`,
+        firma: datos.firma,
+        pie: datos.bajaUrl
+          ? `¿No querés recibir más estos emails? <a href="${datos.bajaUrl}" style="color: #999;">Darme de baja</a>.`
+          : undefined,
+      }),
+    });
   }
 
   /** `$ 283.800,00`. Mismo formato que ve el cliente en la aplicación. */

@@ -94,4 +94,15 @@ export class User extends TenantEntity {
    */
   @Column({ type: 'timestamp', nullable: true })
   emailVerifiedAt: Date | null;
+
+  /**
+   * No quiere recibir los emails de activación y re-enganche (link de baja al
+   * pie de cada uno). Los transaccionales —contraseña, facturas, avisos de
+   * cobro, la confirmación del correo— le siguen llegando.
+   */
+  @Column({ default: false })
+  emailMarketingOptOut: boolean;
+
+  @Column({ type: 'timestamp', nullable: true })
+  emailMarketingOptOutAt: Date | null;
 }
